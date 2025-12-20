@@ -1,0 +1,287 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.1.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-debian:
+    name: Build Debian Package
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            debhelper \
+            dh-python \
+            python3 \
+            python3-setuptools \
+            python3-pil \
+            python3-qrcode \
+            python3-pyqt6
+
+      - name: Install brother-ql (from PyPI)
+        run: |
+          sudo apt-get install -y python3-pip
+          sudo pip3 install brother_ql --break-system-packages
+
+      - name: Get version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+
+      - name: Build Debian package
+        run: |
+          dpkg-buildpackage -us -uc -b
+
+      - name: Find and rename package
+        id: package
+        run: |
+          DEB_FILE=$(ls -t ../*.deb | head -1)
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          NEW_NAME="brother-label-printer_${VERSION}_all.deb"
+          mv "$DEB_FILE" "../$NEW_NAME"
+          echo "DEB_FILE=../$NEW_NAME" >> $GITHUB_OUTPUT
+          echo "DEB_NAME=$NEW_NAME" >> $GITHUB_OUTPUT
+
+      - name: Upload Debian package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: debian-package
+          path: ${{ steps.package.outputs.DEB_FILE }}
+          retention-days: 7
+
+  build-appimage:
+    name: Build AppImage
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Get version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3-pip \
+            libxcb-xinerama0 \
+            libxcb-cursor0 \
+            libxkbcommon-x11-0 \
+            libxcb-icccm4 \
+            libxcb-image0 \
+            libxcb-keysyms1 \
+            libxcb-randr0 \
+            libxcb-render-util0 \
+            libxcb-shape0 \
+            libdbus-1-3 \
+            libegl1 \
+            libfontconfig1 \
+            libgl1 \
+            fuse \
+            file
+
+      - name: Install Python dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Create AppImage directory structure
+        run: |
+          mkdir -p AppDir/usr/bin
+          mkdir -p AppDir/usr/share/applications
+          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
+          mkdir -p AppDir/usr/share/brother-label-printer
+
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller --onefile \
+            --windowed \
+            --name brother-label-printer-gui \
+            --add-data "app/assets:app/assets" \
+            --add-data "app/fonts:app/fonts" \
+            --hidden-import=PyQt6 \
+            --hidden-import=PIL \
+            --hidden-import=qrcode \
+            --hidden-import=brother_ql \
+            app/label_printer_gui.py
+
+      - name: Prepare AppDir
+        run: |
+          # Copy the PyInstaller output
+          cp -r dist/brother-label-printer-gui AppDir/usr/bin/
+
+          # Copy assets and fonts
+          cp -r app/assets AppDir/usr/share/brother-label-printer/
+          cp -r app/fonts AppDir/usr/share/brother-label-printer/
+
+          # Copy desktop file
+          cp brother-label-printer.desktop AppDir/usr/share/applications/
+
+          # Copy icon
+          cp app/assets/box.png AppDir/usr/share/icons/hicolor/256x256/apps/brother-label-printer.png
+          cp app/assets/box.png AppDir/brother-label-printer.png
+
+          # Create AppRun script
+          cat > AppDir/AppRun << 'EOF'
+          #!/bin/bash
+          SELF=$(readlink -f "$0")
+          HERE=${SELF%/*}
+          export PATH="${HERE}/usr/bin:${PATH}"
+          export LD_LIBRARY_PATH="${HERE}/usr/lib:${LD_LIBRARY_PATH}"
+          cd "${HERE}/usr/bin"
+          exec "${HERE}/usr/bin/brother-label-printer-gui" "$@"
+          EOF
+
+          chmod +x AppDir/AppRun
+
+          # Copy desktop file to root
+          cp brother-label-printer.desktop AppDir/
+
+      - name: Download appimagetool
+        run: |
+          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool-x86_64.AppImage
+
+      - name: Build AppImage
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          ARCH=x86_64 ./appimagetool-x86_64.AppImage AppDir "brother-label-printer-${VERSION}-x86_64.AppImage"
+
+      - name: Verify AppImage
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          ls -lh "brother-label-printer-${VERSION}-x86_64.AppImage"
+          file "brother-label-printer-${VERSION}-x86_64.AppImage"
+
+      - name: Upload AppImage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: appimage
+          path: brother-label-printer-${{ steps.version.outputs.VERSION }}-x86_64.AppImage
+          retention-days: 7
+
+  create-release:
+    name: Create GitHub Release
+    needs: [build-debian, build-appimage]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "TAG=v$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display structure of downloaded files
+        run: ls -R artifacts
+
+      - name: Create release notes
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          cat > release-notes.md << EOF
+          # Brother QL Label Printer v${VERSION}
+
+          ## Installation
+
+          ### Debian/Ubuntu (.deb)
+          Download and install the .deb package:
+          \`\`\`bash
+          sudo dpkg -i brother-label-printer_${VERSION}_all.deb
+          sudo apt-get install -f  # Install any missing dependencies
+          \`\`\`
+
+          ### AppImage (Universal Linux)
+          Download the AppImage, make it executable, and run:
+          \`\`\`bash
+          chmod +x brother-label-printer-${VERSION}-x86_64.AppImage
+          ./brother-label-printer-${VERSION}-x86_64.AppImage
+          \`\`\`
+
+          ## What's New
+
+          See the [CHANGELOG](https://github.com/danielrosehill/brother-ql-label-printer/blob/master/debian/changelog) for detailed changes.
+
+          ## Requirements
+
+          - Brother QL-700 label printer (other models not tested)
+          - USB connection
+          - Continuous label tape (DK-22210 29mm or compatible)
+
+          ## Features
+
+          - QR Code + Text labels for inventory tracking
+          - Text-only labels without QR codes
+          - Batch mode for printing up to 10 different labels
+          - Live preview before printing
+          - Support for multiple tape widths (29mm, 38mm, 50mm, 62mm)
+          - Keyboard shortcuts for faster workflow
+
+          ## Support
+
+          For issues and questions, please visit the [GitHub repository](https://github.com/danielrosehill/brother-ql-label-printer).
+          EOF
+
+      - name: Create or update release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.TAG }}
+          name: Brother QL Label Printer ${{ steps.version.outputs.VERSION }}
+          body_path: release-notes.md
+          draft: false
+          prerelease: false
+          files: |
+            artifacts/debian-package/*.deb
+            artifacts/appimage/*.AppImage
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
