@@ -184,7 +184,7 @@ class LabelPrinterGUI(QMainWindow):
 
         # Quick copy buttons
         self.copy_buttons = []
-        for count in [1, 4, 6, 8]:
+        for count in [1, 4, 5, 6, 8]:
             btn = QPushButton(str(count))
             btn.setFixedWidth(40)
             btn.setCheckable(True)
@@ -437,7 +437,7 @@ class LabelPrinterGUI(QMainWindow):
 
         # Quick copy buttons
         self.text_only_copy_buttons = []
-        for count in [1, 4, 6, 8]:
+        for count in [1, 4, 5, 6, 8]:
             btn = QPushButton(str(count))
             btn.setFixedWidth(40)
             btn.setCheckable(True)
