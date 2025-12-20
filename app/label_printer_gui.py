@@ -85,6 +85,11 @@ class LabelPrinterGUI(QMainWindow):
         self.init_text_only_tab(text_only_tab)
         self.tab_widget.addTab(text_only_tab, "Text Only")
 
+        # Create about tab
+        about_tab = QWidget()
+        self.init_about_tab(about_tab)
+        self.tab_widget.addTab(about_tab, "About")
+
         # Status bar
         self.statusBar().showMessage("Ready")
 
@@ -1329,6 +1334,171 @@ class LabelPrinterGUI(QMainWindow):
                     f"Failed to print label:\n{str(e)}"
                 )
                 self.statusBar().showMessage("Print failed")
+
+    def init_about_tab(self, parent):
+        """Initialize the About tab with product information and tape references"""
+        layout = QVBoxLayout(parent)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        # Main scroll area for content
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+
+        # Content widget
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setSpacing(15)
+
+        # Title
+        title = QLabel("Brother QL-700 Label Printer")
+        title.setFont(QFont("Sans", 16, QFont.Weight.Bold))
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        content_layout.addWidget(title)
+
+        # Version
+        version = QLabel("Version 1.1.0")
+        version.setFont(QFont("Sans", 10))
+        version.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        version.setStyleSheet("color: gray;")
+        content_layout.addWidget(version)
+
+        content_layout.addSpacing(10)
+
+        # Application Description
+        desc_group = QGroupBox("About This Application")
+        desc_layout = QVBoxLayout()
+        desc_text = QLabel(
+            "A user-friendly GUI application for printing labels with QR codes on Brother QL-700 "
+            "label printers. Features single label printing, batch mode, and text-only labels with "
+            "support for multiple tape widths."
+        )
+        desc_text.setWordWrap(True)
+        desc_text.setStyleSheet("padding: 10px;")
+        desc_layout.addWidget(desc_text)
+        desc_group.setLayout(desc_layout)
+        content_layout.addWidget(desc_group)
+
+        # Tape Product References
+        tape_group = QGroupBox("Continuous Tape Product References")
+        tape_layout = QVBoxLayout()
+        tape_layout.setSpacing(10)
+
+        # Info text
+        tape_info = QLabel(
+            "Use genuine Brother continuous length (endless) paper tape for best results. "
+            "The following DK tape references are recommended for the QL-700:"
+        )
+        tape_info.setWordWrap(True)
+        tape_info.setStyleSheet("padding: 10px; margin-bottom: 5px;")
+        tape_layout.addWidget(tape_info)
+
+        # Tape specifications table
+        tape_specs = [
+            ("29mm", "DK-22210", "Continuous Length Paper (White)"),
+            ("38mm", "DK-22225", "Continuous Length Paper (White)"),
+            ("50mm", "DK-22223", "Continuous Length Paper (White)"),
+            ("62mm", "DK-22205", "Continuous Length Paper (White)")
+        ]
+
+        for width, product_code, description in tape_specs:
+            tape_item = QWidget()
+            tape_item_layout = QHBoxLayout(tape_item)
+            tape_item_layout.setContentsMargins(10, 5, 10, 5)
+
+            # Width label
+            width_label = QLabel(width)
+            width_label.setFont(QFont("Sans", 11, QFont.Weight.Bold))
+            width_label.setMinimumWidth(60)
+            tape_item_layout.addWidget(width_label)
+
+            # Product code
+            code_label = QLabel(product_code)
+            code_label.setFont(QFont("Monospace", 10, QFont.Weight.Bold))
+            code_label.setStyleSheet("background-color: #f0f0f0; padding: 5px; border-radius: 3px;")
+            code_label.setMinimumWidth(100)
+            tape_item_layout.addWidget(code_label)
+
+            # Description
+            desc_label = QLabel(description)
+            desc_label.setStyleSheet("color: #555;")
+            tape_item_layout.addWidget(desc_label, 1)
+
+            tape_layout.addWidget(tape_item)
+
+        # Note about compatibility
+        note_label = QLabel(
+            "Note: This application is validated only for the Brother QL-700 printer. "
+            "Use with other Brother QL models at your own risk."
+        )
+        note_label.setWordWrap(True)
+        note_label.setStyleSheet("padding: 10px; margin-top: 10px; color: #666; font-style: italic;")
+        tape_layout.addWidget(note_label)
+
+        tape_group.setLayout(tape_layout)
+        content_layout.addWidget(tape_group)
+
+        # Features
+        features_group = QGroupBox("Key Features")
+        features_layout = QVBoxLayout()
+        features_list = [
+            "QR Code + Text labels for inventory tracking",
+            "Text-only labels without QR codes",
+            "Batch mode for printing up to 10 different labels",
+            "Live preview before printing",
+            "Support for multiple tape widths (29mm, 38mm, 50mm, 62mm)",
+            "Keyboard shortcuts for faster workflow",
+            "Customizable fonts and font sizes (40-250pt)",
+            "Auto-increment label numbers"
+        ]
+
+        for feature in features_list:
+            feature_label = QLabel(f"• {feature}")
+            feature_label.setWordWrap(True)
+            feature_label.setStyleSheet("padding: 3px 10px;")
+            features_layout.addWidget(feature_label)
+
+        features_group.setLayout(features_layout)
+        content_layout.addWidget(features_group)
+
+        # Requirements
+        req_group = QGroupBox("System Requirements")
+        req_layout = QVBoxLayout()
+        req_text = QLabel(
+            "<b>Printer:</b> Brother QL-700 (validated)<br>"
+            "<b>Connection:</b> USB (ID: 04f9:2042)<br>"
+            "<b>Tape:</b> Continuous (endless) tape - DK-22210 or compatible<br>"
+            "<b>Operating System:</b> Linux (tested on Ubuntu 25.10)"
+        )
+        req_text.setWordWrap(True)
+        req_text.setStyleSheet("padding: 10px;")
+        req_layout.addWidget(req_text)
+        req_group.setLayout(req_layout)
+        content_layout.addWidget(req_group)
+
+        # Credits and Links
+        credits_group = QGroupBox("Credits & Information")
+        credits_layout = QVBoxLayout()
+        credits_text = QLabel(
+            "<b>Developer:</b> Daniel Rosehill<br>"
+            "<b>GitHub:</b> <a href='https://github.com/danielrosehill/brother-ql-label-printer'>"
+            "github.com/danielrosehill/brother-ql-label-printer</a><br>"
+            "<b>License:</b> Open Source<br><br>"
+            "Built with PyQt6, Pillow, qrcode, and brother_ql"
+        )
+        credits_text.setOpenExternalLinks(True)
+        credits_text.setWordWrap(True)
+        credits_text.setStyleSheet("padding: 10px;")
+        credits_layout.addWidget(credits_text)
+        credits_group.setLayout(credits_layout)
+        content_layout.addWidget(credits_group)
+
+        # Add stretch to push content to top
+        content_layout.addStretch()
+
+        # Set content widget to scroll area
+        scroll.setWidget(content)
+        layout.addWidget(scroll)
 
 
 def main():
