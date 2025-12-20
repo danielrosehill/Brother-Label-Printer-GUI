@@ -1,5 +1,12 @@
 brother-label-printer (1.1.0) unstable; urgency=medium
 
+  * Version 1.1.0
+  * Update release
+
+ -- Daniel Rosehill <public@danielrosehill.com>  Sat, 20 Dec 2025 21:49:05 +0200
+
+brother-label-printer (1.1.0) unstable; urgency=medium
+
   * Added "Text Only" tab for printing text-only labels without QR codes
   * Text is centered both horizontally and vertically on labels
   * Reorganized tabs: "QR + Text", "Batch Mode", and "Text Only"
