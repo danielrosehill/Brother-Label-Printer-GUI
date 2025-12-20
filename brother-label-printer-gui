@@ -1,0 +1,20 @@
+#!/usr/bin/env python3
+"""
+Wrapper script for Brother Label Printer GUI
+"""
+import sys
+import os
+
+# Add the application directory to Python path
+APP_DIR = "/usr/share/brother-label-printer"
+if os.path.exists(APP_DIR):
+    sys.path.insert(0, APP_DIR)
+
+# Now import and run the GUI
+try:
+    from label_printer_gui import main
+    sys.exit(main())
+except ImportError as e:
+    print(f"Error: Could not import label_printer_gui: {e}", file=sys.stderr)
+    print("Please ensure brother-label-printer is properly installed.", file=sys.stderr)
+    sys.exit(1)

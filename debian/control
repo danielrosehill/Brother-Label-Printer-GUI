@@ -1,0 +1,28 @@
+Source: brother-label-printer
+Section: utils
+Priority: optional
+Maintainer: Daniel Rosehill <public@danielrosehill.com>
+Build-Depends: debhelper (>= 13)
+Standards-Version: 4.6.0
+Homepage: https://github.com/danielrosehill/brother-ql-label-printer
+
+Package: brother-label-printer
+Architecture: all
+Depends: ${misc:Depends},
+         python3,
+         python3-pil,
+         python3-qrcode,
+         python3-pyqt6,
+         brother-ql
+Description: Label printer GUI for Brother QL-700
+ A user-friendly GUI application for printing labels with QR codes
+ on Brother QL-700 label printers. Supports single label printing,
+ batch mode, and text-only labels.
+ .
+ Features:
+  - QR + Text labels: Print labels with QR codes and text
+  - Batch mode: Print up to 10 labels in one batch
+  - Text Only: Print centered text-only labels without QR codes
+  - Preview before printing
+  - Support for 29mm, 38mm, 50mm, and 62mm continuous tape
+  - Customizable fonts and sizes

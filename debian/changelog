@@ -1,0 +1,20 @@
+brother-label-printer (1.1.0) unstable; urgency=medium
+
+  * Added "Text Only" tab for printing text-only labels without QR codes
+  * Text is centered both horizontally and vertically on labels
+  * Reorganized tabs: "QR + Text", "Batch Mode", and "Text Only"
+  * Added create_text_only_label() function for centered text labels
+
+ -- Daniel Rosehill <public@danielrosehill.com>  Fri, 20 Dec 2024 18:15:00 +0200
+
+brother-label-printer (1.0.0) unstable; urgency=medium
+
+  * Initial release
+  * Single label printing with QR codes
+  * Batch mode for up to 10 labels
+  * Support for multiple tape widths (29mm, 38mm, 50mm, 62mm)
+  * Preview functionality
+  * Keyboard shortcuts
+  * Customizable fonts and sizes
+
+ -- Daniel Rosehill <public@danielrosehill.com>  Fri, 20 Dec 2024 18:00:00 +0200

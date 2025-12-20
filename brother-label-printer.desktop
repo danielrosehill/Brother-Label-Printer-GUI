@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Brother Label Printer
+Comment=Print labels with QR codes on Brother QL-700
+Exec=/usr/bin/brother-label-printer-gui
+Icon=brother-label-printer
+Terminal=false
+Categories=Utility;Office;
+Keywords=label;printer;qr;brother;ql-700;
+StartupNotify=true

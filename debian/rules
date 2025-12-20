@@ -1,0 +1,31 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@ --buildsystem=makefile
+
+override_dh_auto_configure:
+	# Skip configure
+
+override_dh_auto_build:
+	# Nothing to build
+
+override_dh_auto_install:
+	# Install wrapper script
+	install -D -m 755 brother-label-printer-gui debian/brother-label-printer/usr/bin/brother-label-printer-gui
+
+	# Install Python modules
+	install -D -m 644 app/label_printer_gui.py debian/brother-label-printer/usr/share/brother-label-printer/label_printer_gui.py
+	install -D -m 644 app/print_label.py debian/brother-label-printer/usr/share/brother-label-printer/print_label.py
+
+	# Install assets and fonts
+	install -D -m 644 app/assets/box.png debian/brother-label-printer/usr/share/brother-label-printer/assets/box.png
+	install -D -m 644 app/fonts/static/Archivo-Bold.ttf debian/brother-label-printer/usr/share/brother-label-printer/fonts/static/Archivo-Bold.ttf
+
+	# Install desktop file
+	install -D -m 644 brother-label-printer.desktop debian/brother-label-printer/usr/share/applications/brother-label-printer.desktop
+
+	# Install icon
+	install -D -m 644 app/assets/box.png debian/brother-label-printer/usr/share/pixmaps/brother-label-printer.png
+
+override_dh_auto_clean:
+	# Nothing to clean
