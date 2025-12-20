@@ -37,8 +37,8 @@ Build and install as a Debian package:
 
 ```bash
 # Clone the repository
-git clone https://github.com/danielrosehill/brother-ql-label-printer.git
-cd brother-ql-label-printer
+git clone https://github.com/danielrosehill/QL700-Label-Printer-GUI.git
+cd QL700-Label-Printer-GUI
 
 # Build and install
 ./build-and-install.sh

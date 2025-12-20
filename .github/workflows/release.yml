@@ -27,6 +27,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
+            build-essential \
             debhelper \
             dh-python \
             python3 \
@@ -132,15 +133,28 @@ jobs:
 
       - name: Build with PyInstaller
         run: |
+          # Verify directory structure
+          ls -la app/
+
           pyinstaller --onefile \
             --windowed \
             --name brother-label-printer-gui \
-            --add-data "app/assets:app/assets" \
-            --add-data "app/fonts:app/fonts" \
+            --add-data "app/assets/box.png:assets" \
+            --add-data "app/fonts/static/Archivo-Bold.ttf:fonts/static" \
+            --add-data "app/print_label.py:." \
             --hidden-import=PyQt6 \
+            --hidden-import=PyQt6.QtCore \
+            --hidden-import=PyQt6.QtGui \
+            --hidden-import=PyQt6.QtWidgets \
             --hidden-import=PIL \
+            --hidden-import=PIL.Image \
+            --hidden-import=PIL.ImageDraw \
+            --hidden-import=PIL.ImageFont \
             --hidden-import=qrcode \
             --hidden-import=brother_ql \
+            --hidden-import=brother_ql.raster \
+            --hidden-import=brother_ql.conversion \
+            --hidden-import=brother_ql.backends.helpers \
             app/label_printer_gui.py
 
       - name: Prepare AppDir
@@ -269,7 +283,7 @@ jobs:
 
           ## Support
 
-          For issues and questions, please visit the [GitHub repository](https://github.com/danielrosehill/brother-ql-label-printer).
+          For issues and questions, please visit the [GitHub repository](https://github.com/danielrosehill/QL700-Label-Printer-GUI).
           EOF
 
       - name: Create or update release

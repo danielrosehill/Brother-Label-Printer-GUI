@@ -1481,8 +1481,8 @@ class LabelPrinterGUI(QMainWindow):
         credits_layout = QVBoxLayout()
         credits_text = QLabel(
             "<b>Developer:</b> Daniel Rosehill<br>"
-            "<b>GitHub:</b> <a href='https://github.com/danielrosehill/brother-ql-label-printer'>"
-            "github.com/danielrosehill/brother-ql-label-printer</a><br>"
+            "<b>GitHub:</b> <a href='https://github.com/danielrosehill/QL700-Label-Printer-GUI'>"
+            "github.com/danielrosehill/QL700-Label-Printer-GUI</a><br>"
             "<b>License:</b> Open Source<br><br>"
             "Built with PyQt6, Pillow, qrcode, and brother_ql"
         )

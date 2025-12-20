@@ -4,7 +4,7 @@ Priority: optional
 Maintainer: Daniel Rosehill <public@danielrosehill.com>
 Build-Depends: debhelper (>= 13)
 Standards-Version: 4.6.0
-Homepage: https://github.com/danielrosehill/brother-ql-label-printer
+Homepage: https://github.com/danielrosehill/QL700-Label-Printer-GUI
 
 Package: brother-label-printer
 Architecture: all
