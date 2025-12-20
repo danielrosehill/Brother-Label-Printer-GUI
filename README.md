@@ -1,11 +1,19 @@
-# Brother Label Printer
+# Brother QL-700 Label Printer
 
-A professional GUI application for printing labels with QR codes and text on Brother QL-700 label printers.
+A basic label printing utility for the Brother QL-700 label printer, optimized for inventory applications. Built with CLI foundation and PyQt6 GUI interface.
+
+**Validated on:** Ubuntu 25.10 with Brother QL-700
+**Note:** Not validated with other Brother QL models - use at your own risk with other printers.
 
 ## Features
 
-- **Single Label Mode**: Quick printing of individual labels with QR codes and text
+Three printing modes for flexible inventory labeling:
+
+- **QR Code + Text Mode**: Labels with QR codes and text for inventory tracking
+- **Text-Only Mode**: Simple centered text labels without QR codes
 - **Batch Mode**: Print up to 10 different labels in one session with individual copy counts
+
+Additional features:
 - Support for multiple tape widths: **29mm, 38mm, 50mm, 62mm**
 - **Live preview** before printing
 - **Keyboard shortcuts** for faster workflow (Enter to preview, Ctrl+P to print, Ctrl+R to reset)
@@ -16,9 +24,10 @@ A professional GUI application for printing labels with QR codes and text on Bro
 
 ## Hardware Requirements
 
-- **Printer**: Brother QL-700
+- **Printer**: Brother QL-700 (validated - other models not tested)
 - **Tape**: Continuous (endless) tape - DK-22210 (29mm) or similar
 - **Connection**: USB (USB ID: 04f9:2042)
+- **Tested OS**: Ubuntu 25.10
 
 ## Installation
 
