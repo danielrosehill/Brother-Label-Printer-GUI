@@ -93,6 +93,11 @@ class LabelPrinterGUI(QMainWindow):
         self.init_batch_range_tab(batch_range_tab)
         self.tab_widget.addTab(batch_range_tab, "Batch Range")
 
+        # Create templates tab
+        templates_tab = QWidget()
+        self.init_templates_tab(templates_tab)
+        self.tab_widget.addTab(templates_tab, "Templates")
+
         # Create about tab
         about_tab = QWidget()
         self.init_about_tab(about_tab)
@@ -194,6 +199,7 @@ class LabelPrinterGUI(QMainWindow):
         self.template_combo.addItem("Template 2 (Compact/Vertical)", 2)
         self.template_combo.addItem("Template 3 (Rotated Text)", 3)
         self.template_combo.addItem("Template 4 (Text Only)", 4)
+        self.template_combo.addItem("Template 5 (Vertical Auto-fit)", 5)
         self.template_combo.currentIndexChanged.connect(self.on_input_changed)
         template_layout.addWidget(self.template_combo)
         template_layout.addStretch()
@@ -304,6 +310,7 @@ class LabelPrinterGUI(QMainWindow):
         self.batch_template_combo.addItem("Template 2 (Compact/Vertical)", 2)
         self.batch_template_combo.addItem("Template 3 (Rotated Text)", 3)
         self.batch_template_combo.addItem("Template 4 (Text Only)", 4)
+        self.batch_template_combo.addItem("Template 5 (Vertical Auto-fit)", 5)
         template_layout.addWidget(self.batch_template_combo)
         template_layout.addStretch()
         settings_layout.addLayout(template_layout)
@@ -682,6 +689,12 @@ class LabelPrinterGUI(QMainWindow):
                     font_path=self.font_path_label.text(),
                     font_size=self.font_size_spin.value()
                 )
+            elif template == 5:
+                self.preview_image = create_vertical_text_label(
+                    text=final_label,
+                    tape_width_mm=self.tape_width_combo.currentData(),
+                    font_path=self.font_path_label.text()
+                )
 
             # Save to temp file and display
             temp_path = "/tmp/brother_ql_preview.png"
@@ -776,6 +789,12 @@ class LabelPrinterGUI(QMainWindow):
                         tape_width_mm=self.tape_width_combo.currentData(),
                         font_path=self.font_path_label.text(),
                         font_size=self.font_size_spin.value()
+                    )
+                elif template == 5:
+                    self.preview_image = create_vertical_text_label(
+                        text=final_label,
+                        tape_width_mm=self.tape_width_combo.currentData(),
+                        font_path=self.font_path_label.text()
                     )
             except Exception as e:
                 QMessageBox.critical(
@@ -1048,7 +1067,7 @@ class LabelPrinterGUI(QMainWindow):
             self.text_only_input.setFocus()
         elif index == 3:  # Batch Range tab
             self.batch_range_first.setFocus()
-        # About tab (index 4) doesn't need focus
+        # Templates tab (index 4) and About tab (index 5) don't need focus
 
     def add_batch_label(self):
         """Add a new label to the batch table"""
@@ -1191,6 +1210,12 @@ class LabelPrinterGUI(QMainWindow):
                         font_path=DEFAULT_FONT,
                         font_size=font_size
                     )
+                elif template == 5:
+                    img = create_vertical_text_label(
+                        text=label_text,
+                        tape_width_mm=tape_width,
+                        font_path=DEFAULT_FONT
+                    )
                 preview_images.append(img)
 
             # Combine images vertically for preview
@@ -1304,6 +1329,12 @@ class LabelPrinterGUI(QMainWindow):
                         tape_width_mm=tape_width,
                         font_path=DEFAULT_FONT,
                         font_size=font_size
+                    )
+                elif template == 5:
+                    img = create_vertical_text_label(
+                        text=label_text,
+                        tape_width_mm=tape_width,
+                        font_path=DEFAULT_FONT
                     )
 
                 # Save to temp file
@@ -1921,6 +1952,125 @@ class LabelPrinterGUI(QMainWindow):
             )
             self.statusBar().showMessage("Batch range print failed")
 
+    def init_templates_tab(self, parent):
+        """Initialize the Templates tab with visual examples of all available templates"""
+        layout = QVBoxLayout(parent)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        # Title
+        title = QLabel("Label Template Gallery")
+        title.setFont(QFont("Sans", 14, QFont.Weight.Bold))
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(title)
+
+        # Description
+        desc = QLabel(
+            "Preview of all available label templates. Each example uses 'Box 1' as the text "
+            "and 'https://example.com' as the QR code URL on 29mm tape."
+        )
+        desc.setWordWrap(True)
+        desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        desc.setStyleSheet("color: gray; padding: 10px;")
+        layout.addWidget(desc)
+
+        # Scrollable area for templates
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+
+        # Content widget
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setSpacing(20)
+
+        # Template specifications
+        templates = [
+            {
+                "name": "Template 1: Horizontal Layout",
+                "description": "QR code on left, large text on right, with decorative box icon watermark in bottom right corner.",
+                "function": create_label_image,
+                "params": {"qr_data": "https://example.com", "text": "Box 1", "tape_width_mm": 29, "font_path": DEFAULT_FONT, "font_size": 100, "include_qr": True}
+            },
+            {
+                "name": "Template 2: Compact Vertical Layout",
+                "description": "QR code on top, text below, centered vertically. More compact than Template 1.",
+                "function": create_label_image_template2,
+                "params": {"qr_data": "https://example.com", "text": "Box 1", "tape_width_mm": 29, "font_path": DEFAULT_FONT, "font_size": 100, "include_qr": True}
+            },
+            {
+                "name": "Template 3: Rotated Text Layout",
+                "description": "QR code on left, text rotated 90° counterclockwise on right. Good for vertical reading.",
+                "function": create_label_image_template3,
+                "params": {"qr_data": "https://example.com", "text": "Box 1", "tape_width_mm": 29, "font_path": DEFAULT_FONT, "font_size": 100, "include_qr": True}
+            },
+            {
+                "name": "Template 4: Text Only (Horizontal Centered)",
+                "description": "Large text centered both horizontally and vertically. No QR code. Clean and simple.",
+                "function": create_text_only_label,
+                "params": {"text": "Box 1", "tape_width_mm": 29, "font_path": DEFAULT_FONT, "font_size": 100}
+            },
+            {
+                "name": "Template 5: Vertical Auto-fit Text",
+                "description": "Text rotated 90° counterclockwise and automatically scaled to fit the tape height. No QR code.",
+                "function": create_vertical_text_label,
+                "params": {"text": "Box 1", "tape_width_mm": 29, "font_path": DEFAULT_FONT}
+            }
+        ]
+
+        # Generate and display each template
+        for template_info in templates:
+            # Create group box for this template
+            template_group = QGroupBox(template_info["name"])
+            template_layout = QVBoxLayout()
+
+            # Description
+            desc_label = QLabel(template_info["description"])
+            desc_label.setWordWrap(True)
+            desc_label.setStyleSheet("padding: 5px; color: #555;")
+            template_layout.addWidget(desc_label)
+
+            # Generate preview image
+            try:
+                preview_img = template_info["function"](**template_info["params"])
+
+                # Save to temp file
+                temp_path = f"/tmp/brother_ql_template_preview_{templates.index(template_info)}.png"
+                preview_img.save(temp_path)
+
+                # Display preview
+                preview_label = QLabel()
+                pixmap = QPixmap(temp_path)
+
+                # Scale down if too large for display (max width 800px)
+                if pixmap.width() > 800:
+                    pixmap = pixmap.scaledToWidth(800, Qt.TransformationMode.SmoothTransformation)
+
+                preview_label.setPixmap(pixmap)
+                preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                preview_label.setStyleSheet("background-color: #f5f5f5; padding: 15px; border: 1px solid #ddd;")
+                template_layout.addWidget(preview_label)
+
+                # Image dimensions info
+                info_label = QLabel(f"Dimensions: {preview_img.size[0]} × {preview_img.size[1]} pixels")
+                info_label.setStyleSheet("color: gray; font-size: 9pt; padding: 5px;")
+                info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                template_layout.addWidget(info_label)
+
+            except Exception as e:
+                error_label = QLabel(f"Error generating preview: {str(e)}")
+                error_label.setStyleSheet("color: red; padding: 10px;")
+                template_layout.addWidget(error_label)
+
+            template_group.setLayout(template_layout)
+            content_layout.addWidget(template_group)
+
+        # Add stretch to push content to top
+        content_layout.addStretch()
+
+        # Set content widget to scroll area
+        scroll.setWidget(content)
+        layout.addWidget(scroll)
+
     def init_about_tab(self, parent):
         """Initialize the About tab with product information and tape references"""
         layout = QVBoxLayout(parent)
@@ -2030,6 +2180,7 @@ class LabelPrinterGUI(QMainWindow):
         features_list = [
             "QR Code + Text labels for inventory tracking",
             "Text-only labels without QR codes",
+            "5 different label templates including vertical auto-fit for rotated text",
             "Batch mode for printing up to 10 different labels",
             "Batch range mode for sequential numbered labels",
             "Live preview before printing",
