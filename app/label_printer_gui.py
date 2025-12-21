@@ -86,11 +86,6 @@ class LabelPrinterGUI(QMainWindow):
         self.init_text_only_tab(text_only_tab)
         self.tab_widget.addTab(text_only_tab, "Text Only")
 
-        # Create template preview tab
-        template_preview_tab = QWidget()
-        self.init_template_preview_tab(template_preview_tab)
-        self.tab_widget.addTab(template_preview_tab, "Templates")
-
         # Create about tab
         about_tab = QWidget()
         self.init_about_tab(about_tab)
