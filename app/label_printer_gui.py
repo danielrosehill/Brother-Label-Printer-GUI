@@ -124,11 +124,28 @@ class LabelPrinterGUI(QMainWindow):
         qr_checkbox_layout.addStretch()
         input_layout.addLayout(qr_checkbox_layout)
 
+        # Prefix selection
+        prefix_layout = QHBoxLayout()
+        prefix_label = QLabel("Prefix:")
+        prefix_label.setMinimumWidth(50)
+        prefix_layout.addWidget(prefix_label)
+        self.prefix_combo = QComboBox()
+        self.prefix_combo.addItem("None", "")
+        self.prefix_combo.addItem("Box", "Box")
+        self.prefix_combo.addItem("Container", "Container")
+        self.prefix_combo.addItem("Shelf", "Shelf")
+        self.prefix_combo.addItem("Asset", "Asset")
+        self.prefix_combo.setToolTip("Select a prefix to add before the label number")
+        self.prefix_combo.currentIndexChanged.connect(self.on_prefix_changed)
+        prefix_layout.addWidget(self.prefix_combo)
+        prefix_layout.addStretch()
+        input_layout.addLayout(prefix_layout)
+
         # Label text input
         label_layout = QHBoxLayout()
-        label_label = QLabel("Label:")
-        label_label.setMinimumWidth(50)
-        label_layout.addWidget(label_label)
+        self.label_label = QLabel("Label:")
+        self.label_label.setMinimumWidth(50)
+        label_layout.addWidget(self.label_label)
         self.label_input = QLineEdit()
         self.label_input.setPlaceholderText("Box 1")
         self.label_input.setToolTip("Text to display on the label")
@@ -373,11 +390,28 @@ class LabelPrinterGUI(QMainWindow):
         input_group = QGroupBox("Label Content")
         input_layout = QVBoxLayout()
 
+        # Prefix selection
+        prefix_layout = QHBoxLayout()
+        prefix_label = QLabel("Prefix:")
+        prefix_label.setMinimumWidth(50)
+        prefix_layout.addWidget(prefix_label)
+        self.text_only_prefix_combo = QComboBox()
+        self.text_only_prefix_combo.addItem("None", "")
+        self.text_only_prefix_combo.addItem("Box", "Box")
+        self.text_only_prefix_combo.addItem("Container", "Container")
+        self.text_only_prefix_combo.addItem("Shelf", "Shelf")
+        self.text_only_prefix_combo.addItem("Asset", "Asset")
+        self.text_only_prefix_combo.setToolTip("Select a prefix to add before the label number")
+        self.text_only_prefix_combo.currentIndexChanged.connect(self.on_text_only_prefix_changed)
+        prefix_layout.addWidget(self.text_only_prefix_combo)
+        prefix_layout.addStretch()
+        input_layout.addLayout(prefix_layout)
+
         # Label text input
         label_layout = QHBoxLayout()
-        label_label = QLabel("Text:")
-        label_label.setMinimumWidth(50)
-        label_layout.addWidget(label_label)
+        self.text_only_label_label = QLabel("Text:")
+        self.text_only_label_label.setMinimumWidth(50)
+        label_layout.addWidget(self.text_only_label_label)
         self.text_only_input = QLineEdit()
         self.text_only_input.setPlaceholderText("Enter label text")
         self.text_only_input.setToolTip("Text to display on the label (centered)")
@@ -536,6 +570,18 @@ class LabelPrinterGUI(QMainWindow):
         font_path = self.settings.value("font_path", DEFAULT_FONT)
         self.font_path_label.setText(font_path)
 
+        # Prefix (QR+Text tab)
+        prefix = self.settings.value("prefix", "")
+        index = self.prefix_combo.findData(prefix)
+        if index >= 0:
+            self.prefix_combo.setCurrentIndex(index)
+
+        # Prefix (Text-only tab)
+        text_only_prefix = self.settings.value("text_only_prefix", "")
+        index = self.text_only_prefix_combo.findData(text_only_prefix)
+        if index >= 0:
+            self.text_only_prefix_combo.setCurrentIndex(index)
+
         # Default to 1 copy (first button)
         if self.copy_buttons:
             self.copy_buttons[0].setChecked(True)
@@ -545,6 +591,8 @@ class LabelPrinterGUI(QMainWindow):
         self.settings.setValue("tape_width", self.tape_width_combo.currentData())
         self.settings.setValue("font_size", self.font_size_spin.value())
         self.settings.setValue("font_path", self.font_path_label.text())
+        self.settings.setValue("prefix", self.prefix_combo.currentData())
+        self.settings.setValue("text_only_prefix", self.text_only_prefix_combo.currentData())
 
     def select_font(self):
         """Open file dialog to select font"""
@@ -587,10 +635,13 @@ class LabelPrinterGUI(QMainWindow):
             # Save settings
             self.save_settings()
 
+            # Get final label text with prefix
+            final_label = self.get_final_label_text()
+
             # Generate image
             self.preview_image = create_label_image(
                 qr_data=url if include_qr else "",
-                text=label,
+                text=final_label,
                 tape_width_mm=self.tape_width_combo.currentData(),
                 font_path=self.font_path_label.text(),
                 font_size=self.font_size_spin.value(),
@@ -650,10 +701,13 @@ class LabelPrinterGUI(QMainWindow):
                 return
 
             try:
+                # Get final label text with prefix
+                final_label = self.get_final_label_text()
+
                 # Generate image without preview
                 self.preview_image = create_label_image(
                     qr_data=url if include_qr else "",
-                    text=label,
+                    text=final_label,
                     tape_width_mm=self.tape_width_combo.currentData(),
                     font_path=self.font_path_label.text(),
                     font_size=self.font_size_spin.value(),
@@ -754,6 +808,58 @@ class LabelPrinterGUI(QMainWindow):
         # Clear cached preview since QR setting changed
         self.on_input_changed()
 
+    def on_prefix_changed(self):
+        """Handle prefix selection changes"""
+        prefix = self.prefix_combo.currentData()
+
+        # Update label field placeholder and label based on prefix selection
+        if prefix:
+            self.label_label.setText("Number:")
+            self.label_input.setPlaceholderText("18")
+            self.label_input.setToolTip(f"Enter number (will be displayed as '{prefix} #')")
+        else:
+            self.label_label.setText("Label:")
+            self.label_input.setPlaceholderText("Box 1")
+            self.label_input.setToolTip("Text to display on the label")
+
+        # Clear cached preview since prefix changed
+        self.on_input_changed()
+
+    def on_text_only_prefix_changed(self):
+        """Handle text-only prefix selection changes"""
+        prefix = self.text_only_prefix_combo.currentData()
+
+        # Update label field placeholder and label based on prefix selection
+        if prefix:
+            self.text_only_label_label.setText("Number:")
+            self.text_only_input.setPlaceholderText("18")
+            self.text_only_input.setToolTip(f"Enter number (will be displayed as '{prefix} #')")
+        else:
+            self.text_only_label_label.setText("Text:")
+            self.text_only_input.setPlaceholderText("Enter label text")
+            self.text_only_input.setToolTip("Text to display on the label (centered)")
+
+        # Clear cached preview
+        self.on_text_only_input_changed()
+
+    def get_final_label_text(self):
+        """Get the final label text combining prefix and input"""
+        prefix = self.prefix_combo.currentData()
+        text = self.label_input.text().strip()
+
+        if prefix and text:
+            return f"{prefix} {text}"
+        return text
+
+    def get_final_text_only_label_text(self):
+        """Get the final text-only label text combining prefix and input"""
+        prefix = self.text_only_prefix_combo.currentData()
+        text = self.text_only_input.text().strip()
+
+        if prefix and text:
+            return f"{prefix} {text}"
+        return text
+
     def validate_inputs(self):
         """Validate input fields and provide visual feedback"""
         url = self.url_input.text().strip()
@@ -778,15 +884,33 @@ class LabelPrinterGUI(QMainWindow):
         text = self.label_input.text()
         import re
 
-        # Find trailing number
-        match = re.search(r'(\d+)$', text)
-        if match:
-            num = int(match.group(1))
-            new_text = text[:match.start()] + str(num + 1)
-            self.label_input.setText(new_text)
+        # If prefix is selected, just increment the number
+        prefix = self.prefix_combo.currentData()
+        if prefix:
+            # Text should be just a number when prefix is selected
+            if text.isdigit():
+                self.label_input.setText(str(int(text) + 1))
+            else:
+                # Find trailing number in case user typed something else
+                match = re.search(r'(\d+)$', text)
+                if match:
+                    num = int(match.group(1))
+                    new_text = text[:match.start()] + str(num + 1)
+                    self.label_input.setText(new_text)
+                else:
+                    # If no number, start with 1
+                    self.label_input.setText("1")
         else:
-            # If no number, append " 2"
-            self.label_input.setText(text + " 2")
+            # Original behavior for full text labels
+            # Find trailing number
+            match = re.search(r'(\d+)$', text)
+            if match:
+                num = int(match.group(1))
+                new_text = text[:match.start()] + str(num + 1)
+                self.label_input.setText(new_text)
+            else:
+                # If no number, append " 2"
+                self.label_input.setText(text + " 2")
 
     def set_copies(self, count):
         """Set the number of copies from a quick button"""
@@ -1130,15 +1254,33 @@ class LabelPrinterGUI(QMainWindow):
         text = self.text_only_input.text()
         import re
 
-        # Find trailing number
-        match = re.search(r'(\d+)$', text)
-        if match:
-            num = int(match.group(1))
-            new_text = text[:match.start()] + str(num + 1)
-            self.text_only_input.setText(new_text)
+        # If prefix is selected, just increment the number
+        prefix = self.text_only_prefix_combo.currentData()
+        if prefix:
+            # Text should be just a number when prefix is selected
+            if text.isdigit():
+                self.text_only_input.setText(str(int(text) + 1))
+            else:
+                # Find trailing number in case user typed something else
+                match = re.search(r'(\d+)$', text)
+                if match:
+                    num = int(match.group(1))
+                    new_text = text[:match.start()] + str(num + 1)
+                    self.text_only_input.setText(new_text)
+                else:
+                    # If no number, start with 1
+                    self.text_only_input.setText("1")
         else:
-            # If no number, append " 2"
-            self.text_only_input.setText(text + " 2")
+            # Original behavior for full text labels
+            # Find trailing number
+            match = re.search(r'(\d+)$', text)
+            if match:
+                num = int(match.group(1))
+                new_text = text[:match.start()] + str(num + 1)
+                self.text_only_input.setText(new_text)
+            else:
+                # If no number, append " 2"
+                self.text_only_input.setText(text + " 2")
 
     def clear_text_only_form(self):
         """Clear the text-only form"""
@@ -1217,9 +1359,12 @@ class LabelPrinterGUI(QMainWindow):
         try:
             self.statusBar().showMessage("Generating text-only preview...")
 
+            # Get final label text with prefix
+            final_text = self.get_final_text_only_label_text()
+
             # Generate image
             self.text_only_preview_image = create_text_only_label(
-                text=text,
+                text=final_text,
                 tape_width_mm=self.text_only_tape_width.currentData(),
                 font_path=self.text_only_font_path_label.text(),
                 font_size=self.text_only_font_size.value()
@@ -1263,8 +1408,11 @@ class LabelPrinterGUI(QMainWindow):
         # Generate image if not already previewed
         if not hasattr(self, 'text_only_preview_image') or not self.text_only_preview_image:
             try:
+                # Get final label text with prefix
+                final_text = self.get_final_text_only_label_text()
+
                 self.text_only_preview_image = create_text_only_label(
-                    text=text,
+                    text=final_text,
                     tape_width_mm=self.text_only_tape_width.currentData(),
                     font_path=self.text_only_font_path_label.text(),
                     font_size=self.text_only_font_size.value()

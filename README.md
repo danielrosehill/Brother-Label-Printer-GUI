@@ -14,6 +14,7 @@ Three printing modes for flexible inventory labeling:
 - **Batch Mode**: Print up to 10 different labels in one session with individual copy counts
 
 Additional features:
+- **Label prefixes**: Select from common prefixes (Box, Container, Shelf, Asset) or use none
 - Support for multiple tape widths: **29mm, 38mm, 50mm, 62mm**
 - **Live preview** before printing
 - **Keyboard shortcuts** for faster workflow (Enter to preview, Ctrl+P to print, Ctrl+R to reset)
@@ -109,16 +110,28 @@ Or use your application menu and search for "Brother Label Printer".
 
 ### Single Label Mode
 
-1. Enter the URL or text for the QR code
-2. Enter the label text
-3. Adjust tape width, font size, and copies as needed
-4. Click "Generate Preview" (or press Enter)
-5. Click "Print Label" (or press Ctrl+P)
+1. Select a prefix (optional): Box, Container, Shelf, Asset, or None
+2. Enter the URL or text for the QR code
+3. Enter the label number (if prefix selected) or full label text
+4. Adjust tape width, font size, and copies as needed
+5. Click "Generate Preview" (or press Enter)
+6. Click "Print Label" (or press Ctrl+P)
 
 **Pro tips:**
+- **Prefix feature**: Select "Box" and enter "18" to automatically create "Box 18" labels
 - Use the **+1 button** to auto-increment label numbers
 - Press **Ctrl+R** to quickly clear the form
-- Your settings are automatically saved
+- Your prefix selection is saved automatically for next time
+
+### Text-Only Mode
+
+Same as Single Label Mode but without QR codes - perfect for simple inventory labels.
+
+1. Select a prefix (optional): Box, Container, Shelf, Asset, or None
+2. Enter the label number (if prefix selected) or full label text
+3. Adjust tape width, font size, and copies as needed
+4. Click "Generate Preview" to see your label
+5. Click "Print Label" to print
 
 ### Batch Mode
 
