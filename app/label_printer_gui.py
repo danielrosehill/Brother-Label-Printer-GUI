@@ -41,7 +41,7 @@ from print_label import (
     DEFAULT_FONT, BOX_ICON_PATH, create_label_image, create_text_only_label,
     create_label_image_template2, create_label_image_template3,
     create_vertical_text_label, create_horizontal_centered_label,
-    create_label_image_template6
+    create_label_image_template6, create_shelf_label
 )
 
 
@@ -202,6 +202,7 @@ class LabelPrinterGUI(QMainWindow):
         self.template_combo.addItem("Template 4 (Text Only)", 4)
         self.template_combo.addItem("Template 5 (Vertical Auto-fit)", 5)
         self.template_combo.addItem("Template 6 (Text Above QR)", 6)
+        self.template_combo.addItem("Template 7 (Shelf Label)", 7)
         self.template_combo.currentIndexChanged.connect(self.on_input_changed)
         template_layout.addWidget(self.template_combo)
         template_layout.addStretch()
@@ -314,9 +315,25 @@ class LabelPrinterGUI(QMainWindow):
         self.batch_template_combo.addItem("Template 4 (Text Only)", 4)
         self.batch_template_combo.addItem("Template 5 (Vertical Auto-fit)", 5)
         self.batch_template_combo.addItem("Template 6 (Text Above QR)", 6)
+        self.batch_template_combo.addItem("Template 7 (Shelf Label)", 7)
         template_layout.addWidget(self.batch_template_combo)
         template_layout.addStretch()
         settings_layout.addLayout(template_layout)
+
+        # Prefix selection
+        prefix_layout = QHBoxLayout()
+        prefix_layout.addWidget(QLabel("Prefix:"))
+        self.batch_prefix_combo = QComboBox()
+        self.batch_prefix_combo.addItem("None", "")
+        self.batch_prefix_combo.addItem("Box", "Box")
+        self.batch_prefix_combo.addItem("Container", "Container")
+        self.batch_prefix_combo.addItem("Shelf", "Shelf")
+        self.batch_prefix_combo.addItem("Asset", "Asset")
+        self.batch_prefix_combo.setToolTip("Select a prefix to add before label text/numbers (applies to all labels)")
+        self.batch_prefix_combo.currentIndexChanged.connect(self.save_settings)
+        prefix_layout.addWidget(self.batch_prefix_combo)
+        prefix_layout.addStretch()
+        settings_layout.addLayout(prefix_layout)
 
         # Second row: Tape width and font size
         tape_font_layout = QHBoxLayout()
@@ -598,6 +615,12 @@ class LabelPrinterGUI(QMainWindow):
         if index >= 0:
             self.text_only_prefix_combo.setCurrentIndex(index)
 
+        # Prefix (Batch mode tab)
+        batch_prefix = self.settings.value("batch_prefix", "")
+        index = self.batch_prefix_combo.findData(batch_prefix)
+        if index >= 0:
+            self.batch_prefix_combo.setCurrentIndex(index)
+
         # Load skip confirmation preference
         self.skip_print_confirmation = self.settings.value("skip_print_confirmation", False, type=bool)
 
@@ -608,6 +631,7 @@ class LabelPrinterGUI(QMainWindow):
         self.settings.setValue("font_path", self.font_path_label.text())
         self.settings.setValue("prefix", self.prefix_combo.currentData())
         self.settings.setValue("text_only_prefix", self.text_only_prefix_combo.currentData())
+        self.settings.setValue("batch_prefix", self.batch_prefix_combo.currentData())
         self.settings.setValue("skip_print_confirmation", self.skip_print_confirmation)
 
     def select_font(self):
@@ -706,6 +730,22 @@ class LabelPrinterGUI(QMainWindow):
                     font_path=self.font_path_label.text(),
                     font_size=self.font_size_spin.value(),
                     include_qr=include_qr
+                )
+            elif template == 7:
+                # Shelf label: split text into label and number
+                # Format: "SHELF 2" -> label_text="SHELF", number="2"
+                parts = final_label.rsplit(' ', 1)
+                if len(parts) == 2:
+                    label_text, number = parts
+                else:
+                    # If no space, use entire text as label and empty number
+                    label_text = final_label
+                    number = ""
+                self.preview_image = create_shelf_label(
+                    label_text=label_text,
+                    number=number,
+                    tape_width_mm=self.tape_width_combo.currentData(),
+                    font_path=self.font_path_label.text()
                 )
 
             # Save to temp file and display
@@ -816,6 +856,20 @@ class LabelPrinterGUI(QMainWindow):
                         font_path=self.font_path_label.text(),
                         font_size=self.font_size_spin.value(),
                         include_qr=include_qr
+                    )
+                elif template == 7:
+                    # Shelf label: split text into label and number
+                    parts = final_label.rsplit(' ', 1)
+                    if len(parts) == 2:
+                        label_text, number = parts
+                    else:
+                        label_text = final_label
+                        number = ""
+                    self.preview_image = create_shelf_label(
+                        label_text=label_text,
+                        number=number,
+                        tape_width_mm=self.tape_width_combo.currentData(),
+                        font_path=self.font_path_label.text()
                     )
             except Exception as e:
                 QMessageBox.critical(
@@ -1197,13 +1251,19 @@ class LabelPrinterGUI(QMainWindow):
             tape_width = self.batch_tape_width.currentData()
             font_size = self.batch_font_size.value()
             template = self.batch_template_combo.currentData()
+            prefix = self.batch_prefix_combo.currentData()
 
             for url, label_text, copies in labels:
+                # Apply prefix if selected
+                if prefix and label_text:
+                    final_label_text = f"{prefix} {label_text}"
+                else:
+                    final_label_text = label_text
                 # Generate image based on template selection
                 if template == 1:
                     img = create_label_image(
                         qr_data=url,
-                        text=label_text,
+                        text=final_label_text,
                         tape_width_mm=tape_width,
                         font_path=DEFAULT_FONT,
                         font_size=font_size
@@ -1211,7 +1271,7 @@ class LabelPrinterGUI(QMainWindow):
                 elif template == 2:
                     img = create_label_image_template2(
                         qr_data=url,
-                        text=label_text,
+                        text=final_label_text,
                         tape_width_mm=tape_width,
                         font_path=DEFAULT_FONT,
                         font_size=font_size
@@ -1219,31 +1279,45 @@ class LabelPrinterGUI(QMainWindow):
                 elif template == 3:
                     img = create_label_image_template3(
                         qr_data=url,
-                        text=label_text,
+                        text=final_label_text,
                         tape_width_mm=tape_width,
                         font_path=DEFAULT_FONT,
                         font_size=font_size
                     )
                 elif template == 4:
                     img = create_text_only_label(
-                        text=label_text,
+                        text=final_label_text,
                         tape_width_mm=tape_width,
                         font_path=DEFAULT_FONT,
                         font_size=font_size
                     )
                 elif template == 5:
                     img = create_vertical_text_label(
-                        text=label_text,
+                        text=final_label_text,
                         tape_width_mm=tape_width,
                         font_path=DEFAULT_FONT
                     )
                 elif template == 6:
                     img = create_label_image_template6(
                         qr_data=url,
-                        text=label_text,
+                        text=final_label_text,
                         tape_width_mm=tape_width,
                         font_path=DEFAULT_FONT,
                         font_size=font_size
+                    )
+                elif template == 7:
+                    # Shelf label: split text into label and number
+                    parts = final_label_text.rsplit(' ', 1)
+                    if len(parts) == 2:
+                        label_part, number = parts
+                    else:
+                        label_part = final_label_text
+                        number = ""
+                    img = create_shelf_label(
+                        label_text=label_part,
+                        number=number,
+                        tape_width_mm=tape_width,
+                        font_path=DEFAULT_FONT
                     )
                 preview_images.append(img)
 
@@ -1322,16 +1396,23 @@ class LabelPrinterGUI(QMainWindow):
             tape_width = self.batch_tape_width.currentData()
             font_size = self.batch_font_size.value()
             template = self.batch_template_combo.currentData()
+            prefix = self.batch_prefix_combo.currentData()
             printed_count = 0
 
             for idx, (url, label_text, copies) in enumerate(labels, 1):
                 self.statusBar().showMessage(f"Printing label {idx}/{len(labels)}...")
 
+                # Apply prefix if selected
+                if prefix and label_text:
+                    final_label_text = f"{prefix} {label_text}"
+                else:
+                    final_label_text = label_text
+
                 # Generate image based on template selection
                 if template == 1:
                     img = create_label_image(
                         qr_data=url,
-                        text=label_text,
+                        text=final_label_text,
                         tape_width_mm=tape_width,
                         font_path=DEFAULT_FONT,
                         font_size=font_size
@@ -1339,7 +1420,7 @@ class LabelPrinterGUI(QMainWindow):
                 elif template == 2:
                     img = create_label_image_template2(
                         qr_data=url,
-                        text=label_text,
+                        text=final_label_text,
                         tape_width_mm=tape_width,
                         font_path=DEFAULT_FONT,
                         font_size=font_size
@@ -1347,31 +1428,45 @@ class LabelPrinterGUI(QMainWindow):
                 elif template == 3:
                     img = create_label_image_template3(
                         qr_data=url,
-                        text=label_text,
+                        text=final_label_text,
                         tape_width_mm=tape_width,
                         font_path=DEFAULT_FONT,
                         font_size=font_size
                     )
                 elif template == 4:
                     img = create_text_only_label(
-                        text=label_text,
+                        text=final_label_text,
                         tape_width_mm=tape_width,
                         font_path=DEFAULT_FONT,
                         font_size=font_size
                     )
                 elif template == 5:
                     img = create_vertical_text_label(
-                        text=label_text,
+                        text=final_label_text,
                         tape_width_mm=tape_width,
                         font_path=DEFAULT_FONT
                     )
                 elif template == 6:
                     img = create_label_image_template6(
                         qr_data=url,
-                        text=label_text,
+                        text=final_label_text,
                         tape_width_mm=tape_width,
                         font_path=DEFAULT_FONT,
                         font_size=font_size
+                    )
+                elif template == 7:
+                    # Shelf label: split text into label and number
+                    parts = final_label_text.rsplit(' ', 1)
+                    if len(parts) == 2:
+                        label_part, number = parts
+                    else:
+                        label_part = final_label_text
+                        number = ""
+                    img = create_shelf_label(
+                        label_text=label_part,
+                        number=number,
+                        tape_width_mm=tape_width,
+                        font_path=DEFAULT_FONT
                     )
 
                 # Save to temp file

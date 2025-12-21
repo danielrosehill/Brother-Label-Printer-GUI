@@ -55,6 +55,7 @@ def create_label_image(qr_data: str, text: str, tape_width_mm: int = 29,
 
     Layout (with QR): [QR Code] [Large Text Label] (small box icon in bottom right)
     Layout (text-only): [Large Text Label] (small box icon in bottom right)
+    Text is automatically scaled to fit within the label height.
 
     Image dimensions:
     - Width: Variable (becomes label length)
@@ -65,7 +66,7 @@ def create_label_image(qr_data: str, text: str, tape_width_mm: int = 29,
         text: Text to display on label
         tape_width_mm: Tape width in millimeters
         font_path: Path to TrueType font file
-        font_size: Font size in points
+        font_size: Font size in points (used as maximum, will be scaled down if needed)
         include_qr: Whether to include QR code (default: True)
     """
 
@@ -105,8 +106,30 @@ def create_label_image(qr_data: str, text: str, tape_width_mm: int = 29,
         # Use NEAREST resampling to keep QR modules sharp and crisp
         qr_img = qr_img.resize((qr_size, qr_size), Image.Resampling.NEAREST)
 
-    # Calculate text dimensions with large font
-    font = ImageFont.truetype(font_path, font_size)
+    # Calculate maximum text height to fit within label
+    target_height = label_height_px - (padding * 2)
+
+    # Binary search for optimal font size to fit text height within constraint
+    min_font_size = 20
+    max_font_size = font_size  # Use provided font_size as maximum
+    optimal_font_size = max_font_size
+
+    while max_font_size - min_font_size > 1:
+        test_font_size = (min_font_size + max_font_size) // 2
+        font = ImageFont.truetype(font_path, test_font_size)
+
+        # Measure text height using font metrics
+        ascent, descent = font.getmetrics()
+        text_height_measured = ascent + descent
+
+        if text_height_measured <= target_height:
+            min_font_size = test_font_size
+            optimal_font_size = test_font_size
+        else:
+            max_font_size = test_font_size
+
+    # Calculate text dimensions with optimal font size
+    font = ImageFont.truetype(font_path, optimal_font_size)
     dummy = Image.new("RGB", (1, 1))
     draw = ImageDraw.Draw(dummy)
     bbox = draw.textbbox((0, 0), text, font=font)
@@ -183,13 +206,14 @@ def create_label_image_template2(qr_data: str, text: str, tape_width_mm: int = 2
 
     Layout: QR code on top (centered), text below QR code (centered)
     Optimized for maximum QR code size on thin labels - no decorative elements.
+    Text is automatically scaled to fit within available space after QR code.
 
     Args:
         qr_data: Data to encode in QR code (ignored if include_qr=False)
         text: Text to display on label
         tape_width_mm: Tape width in millimeters
         font_path: Path to TrueType font file
-        font_size: Font size in points
+        font_size: Font size in points (used as maximum, will be scaled down if needed)
         include_qr: Whether to include QR code (default: True)
     """
     # Get tape width in pixels
@@ -199,6 +223,7 @@ def create_label_image_template2(qr_data: str, text: str, tape_width_mm: int = 2
 
     label_height_px = TAPE_WIDTHS[tape_width_mm]
     padding = 15
+    text_gap = padding * 2
 
     # QR code generation - maximize size for scannability
     qr_img = None
@@ -216,13 +241,41 @@ def create_label_image_template2(qr_data: str, text: str, tape_width_mm: int = 2
         qr_img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
         qr_img = qr_img.resize((qr_size, qr_size), Image.Resampling.NEAREST)
 
-    # Calculate text dimensions
-    font = ImageFont.truetype(font_path, font_size)
+    # Calculate available space for text (must fit: QR + gap + text within label height)
+    if include_qr:
+        available_for_text = label_height_px - qr_size - text_gap - (padding * 2)
+    else:
+        available_for_text = label_height_px - (padding * 2)
+
+    # Binary search for optimal font size to fit text within available space
+    min_font_size = 20
+    max_font_size = font_size
+    optimal_font_size = max_font_size
+
+    while max_font_size - min_font_size > 1:
+        test_font_size = (min_font_size + max_font_size) // 2
+        font = ImageFont.truetype(font_path, test_font_size)
+
+        # Measure text height using font metrics
+        ascent, descent = font.getmetrics()
+        text_height_measured = ascent + descent
+
+        if text_height_measured <= available_for_text:
+            min_font_size = test_font_size
+            optimal_font_size = test_font_size
+        else:
+            max_font_size = test_font_size
+
+    # Calculate text dimensions with optimal font size
+    font = ImageFont.truetype(font_path, optimal_font_size)
     dummy = Image.new("RGB", (1, 1))
     draw = ImageDraw.Draw(dummy)
     bbox = draw.textbbox((0, 0), text, font=font)
     text_width = bbox[2] - bbox[0]
-    text_height = bbox[3] - bbox[1]
+
+    # Use font metrics for accurate vertical spacing
+    ascent, descent = font.getmetrics()
+    text_height_metrics = ascent + descent
 
     # Calculate image dimensions for vertical layout
     img_width = max(qr_size if include_qr else 0, text_width) + padding * 2
@@ -233,8 +286,7 @@ def create_label_image_template2(qr_data: str, text: str, tape_width_mm: int = 2
 
     # Calculate vertical centering for the combined QR + text block
     if include_qr and qr_img:
-        text_gap = padding * 2
-        total_content_height = qr_size + text_gap + text_height
+        total_content_height = qr_size + text_gap + text_height_metrics
         start_y = (img_height - total_content_height) // 2
 
         # Paste QR code (centered horizontally)
@@ -245,15 +297,13 @@ def create_label_image_template2(qr_data: str, text: str, tape_width_mm: int = 2
         draw = ImageDraw.Draw(img)
         text_x = (img_width - text_width) // 2
 
-        ascent, descent = font.getmetrics()
         text_y = start_y + qr_size + text_gap
         draw.text((text_x, text_y), text, font=font, fill="black")
     else:
         # Text-only, centered both ways
         draw = ImageDraw.Draw(img)
         text_x = (img_width - text_width) // 2
-        ascent, descent = font.getmetrics()
-        text_y = (img_height - (ascent + descent)) // 2 + (descent // 2)
+        text_y = (img_height - text_height_metrics) // 2
         draw.text((text_x, text_y), text, font=font, fill="black")
 
     # Add border
@@ -277,14 +327,14 @@ def create_label_image_template3(qr_data: str, text: str, tape_width_mm: int = 2
     Create a label image with rotated text layout (Template 3).
 
     Layout: QR code on left, text rotated 90° counterclockwise on right
-    Extra padding on right to prevent text cutoff.
+    Text is automatically scaled to fit within the label height.
 
     Args:
         qr_data: Data to encode in QR code (ignored if include_qr=False)
         text: Text to display on label
         tape_width_mm: Tape width in millimeters
         font_path: Path to TrueType font file
-        font_size: Font size in points
+        font_size: Font size in points (used as maximum, will be scaled down if needed)
         include_qr: Whether to include QR code (default: True)
     """
     # Get tape width in pixels
@@ -296,11 +346,11 @@ def create_label_image_template3(qr_data: str, text: str, tape_width_mm: int = 2
     padding = 15
     text_right_padding = 40  # Extra padding on right to prevent cutoff
 
-    # QR code generation
+    # QR code generation - increased to 90% for better scannability
     qr_img = None
     qr_size = 0
     if include_qr:
-        qr_size = int(label_height_px * 0.85)
+        qr_size = int(label_height_px * 0.90)
         qr = qrcode.QRCode(
             version=1,
             error_correction=qrcode.constants.ERROR_CORRECT_M,
@@ -312,8 +362,37 @@ def create_label_image_template3(qr_data: str, text: str, tape_width_mm: int = 2
         qr_img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
         qr_img = qr_img.resize((qr_size, qr_size), Image.Resampling.NEAREST)
 
-    # Calculate text dimensions (will be rotated)
-    font = ImageFont.truetype(font_path, font_size)
+    # Calculate maximum text height when rotated
+    # After 90° counterclockwise rotation: text WIDTH becomes the vertical HEIGHT
+    # So we need to constrain the text width to fit within label height
+    target_height = label_height_px - (padding * 2)
+
+    # Binary search for optimal font size to fit text width within height constraint
+    min_font_size = 20
+    max_font_size = font_size  # Use provided font_size as maximum
+    optimal_font_size = max_font_size
+
+    while max_font_size - min_font_size > 1:
+        test_font_size = (min_font_size + max_font_size) // 2
+        font = ImageFont.truetype(font_path, test_font_size)
+
+        dummy = Image.new("RGB", (1, 1))
+        draw = ImageDraw.Draw(dummy)
+
+        # Measure the actual text width (which becomes height after rotation)
+        bbox = draw.textbbox((0, 0), text, font=font)
+        text_width_measured = bbox[2] - bbox[0]
+
+        # After 90° counterclockwise rotation, text width becomes the vertical dimension
+        # Check if the rotated text will fit within the label height
+        if text_width_measured <= target_height:
+            min_font_size = test_font_size
+            optimal_font_size = test_font_size
+        else:
+            max_font_size = test_font_size
+
+    # Create text with optimal font size
+    font = ImageFont.truetype(font_path, optimal_font_size)
     dummy = Image.new("RGB", (1, 1))
     draw = ImageDraw.Draw(dummy)
     bbox = draw.textbbox((0, 0), text, font=font)
@@ -321,7 +400,7 @@ def create_label_image_template3(qr_data: str, text: str, tape_width_mm: int = 2
     text_height = bbox[3] - bbox[1]
 
     # Create temporary image for text (will be rotated)
-    # Add extra padding to prevent cutoff
+    # Add padding to prevent cutoff during rotation
     text_img = Image.new("RGB", (text_width + 40, text_height + 40), (255, 255, 255))
     text_draw = ImageDraw.Draw(text_img)
     text_draw.text((20, 20), text, font=font, fill="black")
@@ -345,7 +424,7 @@ def create_label_image_template3(qr_data: str, text: str, tape_width_mm: int = 2
         qr_y = (img_height - qr_size) // 2
         img.paste(qr_img, (padding, qr_y))
 
-    # Paste rotated text
+    # Paste rotated text (centered vertically)
     if include_qr:
         text_x = padding + qr_size + padding
     else:
@@ -372,6 +451,7 @@ def create_text_only_label(text: str, tape_width_mm: int = 29,
                            font_path: str = DEFAULT_FONT, font_size: int = 100) -> Image.Image:
     """
     Create a text-only label with text centered both horizontally and vertically.
+    Text is automatically scaled to fit within the label height.
 
     Image dimensions:
     - Width: Variable (becomes label length)
@@ -381,7 +461,7 @@ def create_text_only_label(text: str, tape_width_mm: int = 29,
         text: Text to display on label
         tape_width_mm: Tape width in millimeters
         font_path: Path to TrueType font file
-        font_size: Font size in points
+        font_size: Font size in points (used as maximum, will be scaled down if needed)
     """
 
     # Get tape width in pixels
@@ -391,17 +471,39 @@ def create_text_only_label(text: str, tape_width_mm: int = 29,
 
     label_height_px = TAPE_WIDTHS[tape_width_mm]
 
-    # Calculate text dimensions
-    font = ImageFont.truetype(font_path, font_size)
+    # Add generous padding around text
+    padding_horizontal = 60
+    padding_vertical = 40
+
+    # Calculate maximum text height to fit within label
+    target_height = label_height_px - (padding_vertical * 2)
+
+    # Binary search for optimal font size to fit text height within constraint
+    min_font_size = 20
+    max_font_size = font_size  # Use provided font_size as maximum
+    optimal_font_size = max_font_size
+
+    while max_font_size - min_font_size > 1:
+        test_font_size = (min_font_size + max_font_size) // 2
+        font = ImageFont.truetype(font_path, test_font_size)
+
+        # Measure text height using font metrics
+        ascent, descent = font.getmetrics()
+        text_height_measured = ascent + descent
+
+        if text_height_measured <= target_height:
+            min_font_size = test_font_size
+            optimal_font_size = test_font_size
+        else:
+            max_font_size = test_font_size
+
+    # Calculate text dimensions with optimal font size
+    font = ImageFont.truetype(font_path, optimal_font_size)
     dummy = Image.new("RGB", (1, 1))
     draw = ImageDraw.Draw(dummy)
     bbox = draw.textbbox((0, 0), text, font=font)
     text_width = bbox[2] - bbox[0]
     text_height = bbox[3] - bbox[1]
-
-    # Add generous padding around text
-    padding_horizontal = 60
-    padding_vertical = 40
 
     # Calculate image dimensions
     img_width = text_width + (padding_horizontal * 2)
@@ -533,13 +635,14 @@ def create_label_image_template6(qr_data: str, text: str, tape_width_mm: int = 2
 
     Layout: Text on top (centered), QR code below text (centered)
     Inverse of Template 2 - optimized for readability with text first.
+    Text is automatically scaled to fit within available space after QR code.
 
     Args:
         qr_data: Data to encode in QR code (ignored if include_qr=False)
         text: Text to display on label
         tape_width_mm: Tape width in millimeters
         font_path: Path to TrueType font file
-        font_size: Font size in points
+        font_size: Font size in points (used as maximum, will be scaled down if needed)
         include_qr: Whether to include QR code (default: True)
     """
     # Get tape width in pixels
@@ -549,6 +652,7 @@ def create_label_image_template6(qr_data: str, text: str, tape_width_mm: int = 2
 
     label_height_px = TAPE_WIDTHS[tape_width_mm]
     padding = 15
+    text_gap = padding * 2
 
     # QR code generation - maximize size for scannability
     qr_img = None
@@ -566,13 +670,41 @@ def create_label_image_template6(qr_data: str, text: str, tape_width_mm: int = 2
         qr_img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
         qr_img = qr_img.resize((qr_size, qr_size), Image.Resampling.NEAREST)
 
-    # Calculate text dimensions
-    font = ImageFont.truetype(font_path, font_size)
+    # Calculate available space for text (must fit: text + gap + QR within label height)
+    if include_qr:
+        available_for_text = label_height_px - qr_size - text_gap - (padding * 2)
+    else:
+        available_for_text = label_height_px - (padding * 2)
+
+    # Binary search for optimal font size to fit text within available space
+    min_font_size = 20
+    max_font_size = font_size
+    optimal_font_size = max_font_size
+
+    while max_font_size - min_font_size > 1:
+        test_font_size = (min_font_size + max_font_size) // 2
+        font = ImageFont.truetype(font_path, test_font_size)
+
+        # Measure text height using font metrics
+        ascent, descent = font.getmetrics()
+        text_height_measured = ascent + descent
+
+        if text_height_measured <= available_for_text:
+            min_font_size = test_font_size
+            optimal_font_size = test_font_size
+        else:
+            max_font_size = test_font_size
+
+    # Calculate text dimensions with optimal font size
+    font = ImageFont.truetype(font_path, optimal_font_size)
     dummy = Image.new("RGB", (1, 1))
     draw = ImageDraw.Draw(dummy)
     bbox = draw.textbbox((0, 0), text, font=font)
     text_width = bbox[2] - bbox[0]
-    text_height = bbox[3] - bbox[1]
+
+    # Use font metrics for accurate vertical spacing
+    ascent, descent = font.getmetrics()
+    text_height_metrics = ascent + descent
 
     # Calculate image dimensions for vertical layout
     img_width = max(qr_size if include_qr else 0, text_width) + padding * 2
@@ -583,28 +715,25 @@ def create_label_image_template6(qr_data: str, text: str, tape_width_mm: int = 2
 
     # Calculate vertical centering for the combined text + QR block
     if include_qr and qr_img:
-        text_gap = padding * 2
-        total_content_height = text_height + text_gap + qr_size
+        total_content_height = text_height_metrics + text_gap + qr_size
         start_y = (img_height - total_content_height) // 2
 
         # Draw text on top (centered horizontally)
         draw = ImageDraw.Draw(img)
         text_x = (img_width - text_width) // 2
 
-        ascent, descent = font.getmetrics()
         text_y = start_y
         draw.text((text_x, text_y), text, font=font, fill="black")
 
         # Paste QR code below text (centered horizontally)
         qr_x = (img_width - qr_size) // 2
-        qr_y = start_y + text_height + text_gap
+        qr_y = start_y + text_height_metrics + text_gap
         img.paste(qr_img, (qr_x, qr_y))
     else:
         # Text-only, centered both ways
         draw = ImageDraw.Draw(img)
         text_x = (img_width - text_width) // 2
-        ascent, descent = font.getmetrics()
-        text_y = (img_height - (ascent + descent)) // 2 + (descent // 2)
+        text_y = (img_height - text_height_metrics) // 2
         draw.text((text_x, text_y), text, font=font, fill="black")
 
     # Add border
@@ -695,6 +824,136 @@ def create_horizontal_centered_label(text: str, tape_width_mm: int = 29,
     border_width = 2
     border_color = (200, 200, 200)  # Light gray
 
+    draw.rectangle(
+        [(border_width//2, border_width//2),
+         (img_width - border_width//2 - 1, img_height - border_width//2 - 1)],
+        outline=border_color,
+        width=border_width
+    )
+
+    return img
+
+
+def create_shelf_label(label_text: str, number: str, tape_width_mm: int = 29,
+                       font_path: str = DEFAULT_FONT) -> Image.Image:
+    """
+    Create a shelf label with vertical text on left and large number on right (Template 7).
+
+    Layout: [Vertical "SHELF" text] [Large number]
+    Example: "SHELF" (vertical) + "2" (horizontal large)
+
+    Image dimensions:
+    - Width: Variable (becomes label length)
+    - Height: Fixed based on tape width (29mm, 38mm, 50mm, or 62mm)
+
+    Args:
+        label_text: Text to display vertically on the left (e.g., "SHELF")
+        number: Number to display horizontally on the right (e.g., "2")
+        tape_width_mm: Tape width in millimeters
+        font_path: Path to TrueType font file
+    """
+    # Get tape width in pixels
+    if tape_width_mm not in TAPE_WIDTHS:
+        raise ValueError(f"Unsupported tape width: {tape_width_mm}mm. "
+                        f"Supported: {list(TAPE_WIDTHS.keys())}")
+
+    label_height_px = TAPE_WIDTHS[tape_width_mm]
+    padding = 20
+    gap = 30  # Gap between vertical text and number
+
+    # Calculate optimal font size for vertical text to fit in tape height
+    target_height = label_height_px - (padding * 2)
+
+    # Binary search for vertical text font size
+    min_font_size = 30
+    max_font_size = 200
+    vertical_font_size = max_font_size
+
+    while max_font_size - min_font_size > 1:
+        test_font_size = (min_font_size + max_font_size) // 2
+        font = ImageFont.truetype(font_path, test_font_size)
+
+        dummy = Image.new("RGB", (1, 1))
+        draw = ImageDraw.Draw(dummy)
+        bbox = draw.textbbox((0, 0), label_text, font=font)
+        text_width = bbox[2] - bbox[0]
+
+        # When rotated 90° clockwise, text width becomes vertical dimension
+        if text_width <= target_height:
+            min_font_size = test_font_size
+            vertical_font_size = test_font_size
+        else:
+            max_font_size = test_font_size
+
+    # Create vertical text (rotated 90° clockwise)
+    vertical_font = ImageFont.truetype(font_path, vertical_font_size)
+    dummy = Image.new("RGB", (1, 1))
+    draw = ImageDraw.Draw(dummy)
+    bbox = draw.textbbox((0, 0), label_text, font=vertical_font)
+    vert_text_width = bbox[2] - bbox[0]
+    vert_text_height = bbox[3] - bbox[1]
+
+    # Create temporary image for vertical text with extra padding
+    vert_text_img = Image.new("RGB", (vert_text_width + 40, vert_text_height + 40), (255, 255, 255))
+    vert_draw = ImageDraw.Draw(vert_text_img)
+    vert_draw.text((20, 20), label_text, font=vertical_font, fill="black")
+
+    # Rotate text 90° clockwise (use -90 for clockwise rotation)
+    vert_text_rotated = vert_text_img.rotate(-90, expand=True)
+
+    # Calculate optimal font size for number to fill most of remaining space
+    # Number should be large and prominent
+    number_target_height = label_height_px * 0.7
+
+    min_font_size = 80
+    max_font_size = 500
+    number_font_size = max_font_size
+
+    while max_font_size - min_font_size > 1:
+        test_font_size = (min_font_size + max_font_size) // 2
+        font = ImageFont.truetype(font_path, test_font_size)
+
+        ascent, descent = font.getmetrics()
+        text_height = ascent + descent
+
+        if text_height <= number_target_height:
+            min_font_size = test_font_size
+            number_font_size = test_font_size
+        else:
+            max_font_size = test_font_size
+
+    # Create number text
+    number_font = ImageFont.truetype(font_path, number_font_size)
+    dummy = Image.new("RGB", (1, 1))
+    draw = ImageDraw.Draw(dummy)
+    bbox = draw.textbbox((0, 0), number, font=number_font)
+    number_width = bbox[2] - bbox[0]
+    number_height = bbox[3] - bbox[1]
+
+    # Calculate final image dimensions
+    img_width = vert_text_rotated.width + gap + number_width + (padding * 2)
+    img_height = label_height_px
+
+    # Create final image
+    img = Image.new("RGB", (img_width, img_height), (255, 255, 255))
+
+    # Paste vertical text on left (centered vertically)
+    vert_x = padding
+    vert_y = (img_height - vert_text_rotated.height) // 2
+    img.paste(vert_text_rotated, (vert_x, vert_y))
+
+    # Draw number on right (centered vertically)
+    draw = ImageDraw.Draw(img)
+    number_x = padding + vert_text_rotated.width + gap
+
+    ascent, descent = number_font.getmetrics()
+    number_y = (img_height - (ascent + descent)) // 2 + (descent // 2)
+
+    draw.text((number_x, number_y), number, font=number_font, fill="black")
+
+    # Add subtle border
+    border_width = 2
+    border_color = (200, 200, 200)
     draw.rectangle(
         [(border_width//2, border_width//2),
          (img_width - border_width//2 - 1, img_height - border_width//2 - 1)],
