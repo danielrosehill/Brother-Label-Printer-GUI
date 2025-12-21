@@ -456,6 +456,181 @@ def create_text_only_label(text: str, tape_width_mm: int = 29,
     return img
 
 
+def create_vertical_text_label(text: str, tape_width_mm: int = 29,
+                               font_path: str = DEFAULT_FONT) -> Image.Image:
+    """
+    Create a text-only label with vertical text (rotated 90° counterclockwise).
+    Text is constrained to one line and scaled to fit vertically.
+
+    Image dimensions:
+    - Width: Variable (becomes label length)
+    - Height: Fixed based on tape width (29mm, 38mm, 50mm, or 62mm)
+
+    Args:
+        text: Text to display on label (one line)
+        tape_width_mm: Tape width in millimeters
+        font_path: Path to TrueType font file
+    """
+    # Get tape width in pixels
+    if tape_width_mm not in TAPE_WIDTHS:
+        raise ValueError(f"Unsupported tape width: {tape_width_mm}mm. "
+                        f"Supported: {list(TAPE_WIDTHS.keys())}")
+
+    label_height_px = TAPE_WIDTHS[tape_width_mm]
+    padding = 20
+
+    # Start with a large font size and scale down to fit
+    # The text needs to fit vertically when rotated
+    target_height = label_height_px - (padding * 2)
+
+    # Binary search for optimal font size
+    min_font_size = 20
+    max_font_size = 500
+    optimal_font_size = max_font_size
+
+    while max_font_size - min_font_size > 1:
+        test_font_size = (min_font_size + max_font_size) // 2
+        font = ImageFont.truetype(font_path, test_font_size)
+
+        # Measure text dimensions
+        dummy = Image.new("RGB", (1, 1))
+        draw = ImageDraw.Draw(dummy)
+        bbox = draw.textbbox((0, 0), text, font=font)
+        text_width = bbox[2] - bbox[0]
+
+        # When rotated 90°, text width becomes the height
+        if text_width <= target_height:
+            min_font_size = test_font_size
+            optimal_font_size = test_font_size
+        else:
+            max_font_size = test_font_size
+
+    # Create text with optimal font size
+    font = ImageFont.truetype(font_path, optimal_font_size)
+    dummy = Image.new("RGB", (1, 1))
+    draw = ImageDraw.Draw(dummy)
+    bbox = draw.textbbox((0, 0), text, font=font)
+    text_width = bbox[2] - bbox[0]
+    text_height = bbox[3] - bbox[1]
+
+    # Create temporary image for text
+    text_img = Image.new("RGB", (text_width + 40, text_height + 40), (255, 255, 255))
+    text_draw = ImageDraw.Draw(text_img)
+    text_draw.text((20, 20), text, font=font, fill="black")
+
+    # Rotate text 90° counterclockwise
+    text_img_rotated = text_img.rotate(90, expand=True)
+
+    # Calculate final image dimensions
+    img_width = text_img_rotated.width + (padding * 2)
+    img_height = label_height_px
+
+    # Create final image
+    img = Image.new("RGB", (img_width, img_height), (255, 255, 255))
+
+    # Paste rotated text (centered)
+    text_x = (img_width - text_img_rotated.width) // 2
+    text_y = (img_height - text_img_rotated.height) // 2
+    img.paste(text_img_rotated, (text_x, text_y))
+
+    # Add subtle border
+    border_width = 2
+    border_color = (200, 200, 200)
+    draw = ImageDraw.Draw(img)
+    draw.rectangle(
+        [(border_width//2, border_width//2),
+         (img_width - border_width//2 - 1, img_height - border_width//2 - 1)],
+        outline=border_color,
+        width=border_width
+    )
+
+    return img
+
+
+def create_horizontal_centered_label(text: str, tape_width_mm: int = 29,
+                                     font_path: str = DEFAULT_FONT) -> Image.Image:
+    """
+    Create a text-only label with horizontal centered text.
+    Text takes up approximately half the vertical space and is centered both ways.
+
+    Image dimensions:
+    - Width: Variable (becomes label length)
+    - Height: Fixed based on tape width (29mm, 38mm, 50mm, or 62mm)
+
+    Args:
+        text: Text to display on label
+        tape_width_mm: Tape width in millimeters
+        font_path: Path to TrueType font file
+    """
+    # Get tape width in pixels
+    if tape_width_mm not in TAPE_WIDTHS:
+        raise ValueError(f"Unsupported tape width: {tape_width_mm}mm. "
+                        f"Supported: {list(TAPE_WIDTHS.keys())}")
+
+    label_height_px = TAPE_WIDTHS[tape_width_mm]
+    padding = 40
+
+    # Font size should make text take up ~50% of vertical space
+    target_text_height = label_height_px * 0.5
+
+    # Binary search for optimal font size
+    min_font_size = 20
+    max_font_size = 500
+    optimal_font_size = max_font_size
+
+    while max_font_size - min_font_size > 1:
+        test_font_size = (min_font_size + max_font_size) // 2
+        font = ImageFont.truetype(font_path, test_font_size)
+
+        # Measure text dimensions
+        ascent, descent = font.getmetrics()
+        text_height = ascent + descent
+
+        if text_height <= target_text_height:
+            min_font_size = test_font_size
+            optimal_font_size = test_font_size
+        else:
+            max_font_size = test_font_size
+
+    # Create final image with optimal font
+    font = ImageFont.truetype(font_path, optimal_font_size)
+    dummy = Image.new("RGB", (1, 1))
+    draw = ImageDraw.Draw(dummy)
+    bbox = draw.textbbox((0, 0), text, font=font)
+    text_width = bbox[2] - bbox[0]
+    text_height = bbox[3] - bbox[1]
+
+    # Calculate image dimensions
+    img_width = text_width + (padding * 2)
+    img_height = label_height_px
+
+    # Create image with white background
+    img = Image.new("RGB", (img_width, img_height), (255, 255, 255))
+    draw = ImageDraw.Draw(img)
+
+    # Center text both horizontally and vertically
+    text_x = (img_width - text_width) // 2
+
+    # Use font metrics for precise vertical centering
+    ascent, descent = font.getmetrics()
+    text_y = (img_height - (ascent + descent)) // 2 + (descent // 2)
+
+    draw.text((text_x, text_y), text, font=font, fill="black")
+
+    # Add subtle border around the label
+    border_width = 2
+    border_color = (200, 200, 200)  # Light gray
+
+    draw.rectangle(
+        [(border_width//2, border_width//2),
+         (img_width - border_width//2 - 1, img_height - border_width//2 - 1)],
+        outline=border_color,
+        width=border_width
+    )
+
+    return img
+
+
 def print_label(image: Image.Image, tape_width_mm: int = 29,
                 printer: str = DEFAULT_PRINTER, backend: str = DEFAULT_BACKEND,
                 rotate: int = 90):

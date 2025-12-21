@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
     QFileDialog, QMessageBox, QScrollArea, QToolButton, QTabWidget,
     QTableWidget, QTableWidgetItem, QHeaderView, QCheckBox
 )
-from PyQt6.QtCore import Qt, QSettings
+from PyQt6.QtCore import Qt, QSettings, QTimer
 from PyQt6.QtGui import QPixmap, QFont, QAction, QKeySequence, QIcon
 from PIL import Image, ImageDraw, ImageFont
 import qrcode
@@ -39,7 +39,8 @@ def suppress_stderr():
 from print_label import (
     TAPE_WIDTHS, PRINTER_MODEL, DEFAULT_PRINTER, DEFAULT_BACKEND,
     DEFAULT_FONT, BOX_ICON_PATH, create_label_image, create_text_only_label,
-    create_label_image_template2, create_label_image_template3
+    create_label_image_template2, create_label_image_template3,
+    create_vertical_text_label, create_horizontal_centered_label
 )
 
 
@@ -53,6 +54,7 @@ class LabelPrinterGUI(QMainWindow):
         self.batch_labels = []
         self.last_copies = 1  # Track last used copies for batch mode
         self.current_copies = 1  # Track current copies selection
+        self.skip_print_confirmation = False  # Allow users to skip confirmations
         self.init_ui()
         self.load_settings()
         self.setup_shortcuts()
@@ -85,6 +87,11 @@ class LabelPrinterGUI(QMainWindow):
         text_only_tab = QWidget()
         self.init_text_only_tab(text_only_tab)
         self.tab_widget.addTab(text_only_tab, "Text Only")
+
+        # Create batch range tab
+        batch_range_tab = QWidget()
+        self.init_batch_range_tab(batch_range_tab)
+        self.tab_widget.addTab(batch_range_tab, "Batch Range")
 
         # Create about tab
         about_tab = QWidget()
@@ -216,29 +223,14 @@ class LabelPrinterGUI(QMainWindow):
 
         main_settings_layout.addSpacing(20)
 
-        # Copies with quick buttons
+        # Copies - simple spinner for ease of use
         main_settings_layout.addWidget(QLabel("Copies:"))
-
-        # Quick copy buttons
-        self.copy_buttons = []
-        for count in [1, 4, 5, 6, 8]:
-            btn = QPushButton(str(count))
-            btn.setFixedWidth(40)
-            btn.setCheckable(True)
-            btn.setToolTip(f"Print {count} cop{'y' if count == 1 else 'ies'}")
-            btn.clicked.connect(lambda checked, c=count: self.set_copies(c))
-            self.copy_buttons.append(btn)
-            main_settings_layout.addWidget(btn)
-
-        # Dropdown for custom amounts
-        self.copies_combo = QComboBox()
-        self.copies_combo.setToolTip("Custom number of copies")
-        self.copies_combo.addItem("Other", 0)
-        for i in range(1, 21):
-            self.copies_combo.addItem(str(i), i)
-        self.copies_combo.setCurrentIndex(0)
-        self.copies_combo.currentIndexChanged.connect(self.on_copies_combo_changed)
-        main_settings_layout.addWidget(self.copies_combo)
+        self.copies_spin = QSpinBox()
+        self.copies_spin.setRange(1, 20)
+        self.copies_spin.setValue(1)
+        self.copies_spin.setToolTip("Number of copies to print (1-20)")
+        self.copies_spin.setFixedWidth(70)
+        main_settings_layout.addWidget(self.copies_spin)
 
         main_settings_layout.addStretch()
         settings_layout.addLayout(main_settings_layout)
@@ -504,29 +496,14 @@ class LabelPrinterGUI(QMainWindow):
 
         main_settings_layout.addSpacing(20)
 
-        # Copies with quick buttons
+        # Copies - simple spinner for ease of use
         main_settings_layout.addWidget(QLabel("Copies:"))
-
-        # Quick copy buttons
-        self.text_only_copy_buttons = []
-        for count in [1, 4, 5, 6, 8]:
-            btn = QPushButton(str(count))
-            btn.setFixedWidth(40)
-            btn.setCheckable(True)
-            btn.setToolTip(f"Print {count} cop{'y' if count == 1 else 'ies'}")
-            btn.clicked.connect(lambda checked, c=count: self.set_text_only_copies(c))
-            self.text_only_copy_buttons.append(btn)
-            main_settings_layout.addWidget(btn)
-
-        # Dropdown for custom amounts
-        self.text_only_copies_combo = QComboBox()
-        self.text_only_copies_combo.setToolTip("Custom number of copies")
-        self.text_only_copies_combo.addItem("Other", 0)
-        for i in range(1, 21):
-            self.text_only_copies_combo.addItem(str(i), i)
-        self.text_only_copies_combo.setCurrentIndex(0)
-        self.text_only_copies_combo.currentIndexChanged.connect(self.on_text_only_copies_combo_changed)
-        main_settings_layout.addWidget(self.text_only_copies_combo)
+        self.text_only_copies_spin = QSpinBox()
+        self.text_only_copies_spin.setRange(1, 20)
+        self.text_only_copies_spin.setValue(1)
+        self.text_only_copies_spin.setToolTip("Number of copies to print (1-20)")
+        self.text_only_copies_spin.setFixedWidth(70)
+        main_settings_layout.addWidget(self.text_only_copies_spin)
 
         main_settings_layout.addStretch()
         settings_layout.addLayout(main_settings_layout)
@@ -583,10 +560,6 @@ class LabelPrinterGUI(QMainWindow):
         preview_group.setLayout(preview_layout)
         layout.addWidget(preview_group, 1)
 
-        # Default to 1 copy (first button)
-        if self.text_only_copy_buttons:
-            self.text_only_copy_buttons[0].setChecked(True)
-
     def load_settings(self):
         """Load persistent settings"""
         # Tape width
@@ -615,9 +588,8 @@ class LabelPrinterGUI(QMainWindow):
         if index >= 0:
             self.text_only_prefix_combo.setCurrentIndex(index)
 
-        # Default to 1 copy (first button)
-        if self.copy_buttons:
-            self.copy_buttons[0].setChecked(True)
+        # Load skip confirmation preference
+        self.skip_print_confirmation = self.settings.value("skip_print_confirmation", False, type=bool)
 
     def save_settings(self):
         """Save persistent settings"""
@@ -626,6 +598,7 @@ class LabelPrinterGUI(QMainWindow):
         self.settings.setValue("font_path", self.font_path_label.text())
         self.settings.setValue("prefix", self.prefix_combo.currentData())
         self.settings.setValue("text_only_prefix", self.text_only_prefix_combo.currentData())
+        self.settings.setValue("skip_print_confirmation", self.skip_print_confirmation)
 
     def select_font(self):
         """Open file dialog to select font"""
@@ -1003,44 +976,9 @@ class LabelPrinterGUI(QMainWindow):
                 # If no number, append " 2"
                 self.label_input.setText(text + " 2")
 
-    def set_copies(self, count):
-        """Set the number of copies from a quick button"""
-        # Uncheck all buttons
-        for btn in self.copy_buttons:
-            btn.setChecked(False)
-
-        # Check the clicked button
-        for btn in self.copy_buttons:
-            if btn.text() == str(count):
-                btn.setChecked(True)
-                break
-
-        # Reset dropdown to "Other"
-        self.copies_combo.setCurrentIndex(0)
-        self.current_copies = count
-
-    def on_copies_combo_changed(self):
-        """Handle dropdown selection for custom copy count"""
-        if self.copies_combo.currentIndex() > 0:
-            # User selected a number from dropdown
-            # Uncheck all quick buttons
-            for btn in self.copy_buttons:
-                btn.setChecked(False)
-            self.current_copies = self.copies_combo.currentData()
-
     def get_copies(self):
         """Get the currently selected number of copies"""
-        # Check if any button is selected
-        for btn in self.copy_buttons:
-            if btn.isChecked():
-                return int(btn.text())
-
-        # Otherwise use dropdown (if not "Other")
-        if self.copies_combo.currentIndex() > 0:
-            return self.copies_combo.currentData()
-
-        # Default to 1
-        return 1
+        return self.copies_spin.value()
 
     def clear_form(self):
         """Clear all input fields"""
@@ -1052,11 +990,7 @@ class LabelPrinterGUI(QMainWindow):
         self.print_button.setEnabled(False)
 
         # Reset copies to 1
-        for btn in self.copy_buttons:
-            btn.setChecked(False)
-        self.copy_buttons[0].setChecked(True)
-        self.copies_combo.setCurrentIndex(0)
-        self.current_copies = 1
+        self.copies_spin.setValue(1)
 
         self.statusBar().showMessage("Form cleared")
 
@@ -1079,6 +1013,42 @@ class LabelPrinterGUI(QMainWindow):
         clear_action.setShortcut(QKeySequence("Ctrl+R"))
         clear_action.triggered.connect(self.clear_form)
         self.addAction(clear_action)
+
+        # Ctrl+Up to increment label
+        increment_action = QAction(self)
+        increment_action.setShortcut(QKeySequence("Ctrl+Up"))
+        increment_action.triggered.connect(self.handle_increment_shortcut)
+        self.addAction(increment_action)
+
+        # Tab change event for auto-focus
+        self.tab_widget.currentChanged.connect(self.on_tab_changed)
+
+    def handle_increment_shortcut(self):
+        """Handle Ctrl+Up keyboard shortcut to increment label based on current tab"""
+        current_tab = self.tab_widget.currentIndex()
+        if current_tab == 0:  # QR + Text tab
+            self.increment_label()
+        elif current_tab == 2:  # Text Only tab
+            self.increment_text_only_label()
+        # Batch mode and Batch Range don't have increment functionality
+
+    def on_tab_changed(self, index):
+        """Auto-focus on primary input field when tab changes"""
+        # Small delay to ensure tab is fully loaded
+        QTimer.singleShot(50, lambda: self._set_tab_focus(index))
+
+    def _set_tab_focus(self, index):
+        """Set focus to the primary input field of the current tab"""
+        if index == 0:  # QR + Text tab
+            self.label_input.setFocus()
+        elif index == 1:  # Batch Mode tab
+            # Focus on the batch table if it has rows, otherwise nothing
+            pass
+        elif index == 2:  # Text Only tab
+            self.text_only_input.setFocus()
+        elif index == 3:  # Batch Range tab
+            self.batch_range_first.setFocus()
+        # About tab (index 4) doesn't need focus
 
     def add_batch_label(self):
         """Add a new label to the batch table"""
@@ -1432,48 +1402,13 @@ class LabelPrinterGUI(QMainWindow):
         self.text_only_preview_image = None
 
         # Reset copies to 1
-        for btn in self.text_only_copy_buttons:
-            btn.setChecked(False)
-        self.text_only_copy_buttons[0].setChecked(True)
-        self.text_only_copies_combo.setCurrentIndex(0)
+        self.text_only_copies_spin.setValue(1)
 
         self.statusBar().showMessage("Text-only form cleared")
 
-    def set_text_only_copies(self, count):
-        """Set the number of copies for text-only labels"""
-        # Uncheck all buttons
-        for btn in self.text_only_copy_buttons:
-            btn.setChecked(False)
-
-        # Check the clicked button
-        for btn in self.text_only_copy_buttons:
-            if btn.text() == str(count):
-                btn.setChecked(True)
-                break
-
-        # Reset dropdown to "Other"
-        self.text_only_copies_combo.setCurrentIndex(0)
-
-    def on_text_only_copies_combo_changed(self):
-        """Handle text-only copies combo changes"""
-        if self.text_only_copies_combo.currentIndex() > 0:
-            # Uncheck all quick buttons
-            for btn in self.text_only_copy_buttons:
-                btn.setChecked(False)
-
     def get_text_only_copies(self):
         """Get the currently selected number of copies for text-only"""
-        # Check if any button is selected
-        for btn in self.text_only_copy_buttons:
-            if btn.isChecked():
-                return int(btn.text())
-
-        # Otherwise use dropdown (if not "Other")
-        if self.text_only_copies_combo.currentIndex() > 0:
-            return self.text_only_copies_combo.currentData()
-
-        # Default to 1
-        return 1
+        return self.text_only_copies_spin.value()
 
     def select_text_only_font(self):
         """Select font for text-only labels"""
@@ -1625,6 +1560,367 @@ class LabelPrinterGUI(QMainWindow):
                 )
                 self.statusBar().showMessage("Print failed")
 
+    def init_batch_range_tab(self, parent):
+        """Initialize the batch range text-only printing tab"""
+        layout = QVBoxLayout(parent)
+
+        # Input section
+        input_group = QGroupBox("Label Range")
+        input_layout = QVBoxLayout()
+
+        # Prefix selection
+        prefix_layout = QHBoxLayout()
+        prefix_label = QLabel("Prefix:")
+        prefix_label.setMinimumWidth(80)
+        prefix_layout.addWidget(prefix_label)
+        self.batch_range_prefix_combo = QComboBox()
+        self.batch_range_prefix_combo.addItem("None", "")
+        self.batch_range_prefix_combo.addItem("Box", "Box")
+        self.batch_range_prefix_combo.addItem("Container", "Container")
+        self.batch_range_prefix_combo.addItem("Shelf", "Shelf")
+        self.batch_range_prefix_combo.addItem("Asset", "Asset")
+        self.batch_range_prefix_combo.setToolTip("Select a prefix to add before the label numbers")
+        prefix_layout.addWidget(self.batch_range_prefix_combo)
+        prefix_layout.addStretch()
+        input_layout.addLayout(prefix_layout)
+
+        # Range selection
+        range_layout = QHBoxLayout()
+
+        # First number
+        first_label = QLabel("First Number:")
+        first_label.setMinimumWidth(80)
+        range_layout.addWidget(first_label)
+        self.batch_range_first = QSpinBox()
+        self.batch_range_first.setRange(1, 9999)
+        self.batch_range_first.setValue(1)
+        self.batch_range_first.setToolTip("Starting number in the series")
+        range_layout.addWidget(self.batch_range_first)
+
+        range_layout.addSpacing(20)
+
+        # Last number
+        last_label = QLabel("Last Number:")
+        last_label.setMinimumWidth(80)
+        range_layout.addWidget(last_label)
+        self.batch_range_last = QSpinBox()
+        self.batch_range_last.setRange(1, 9999)
+        self.batch_range_last.setValue(10)
+        self.batch_range_last.setToolTip("Ending number in the series")
+        range_layout.addWidget(self.batch_range_last)
+
+        range_layout.addStretch()
+        input_layout.addLayout(range_layout)
+
+        input_group.setLayout(input_layout)
+        layout.addWidget(input_group)
+
+        # Settings section
+        settings_group = QGroupBox("Printer Settings")
+        settings_layout = QVBoxLayout()
+
+        # Template selection (Vertical or Horizontal)
+        template_layout = QHBoxLayout()
+        template_layout.addWidget(QLabel("Template:"))
+        self.batch_range_template = QComboBox()
+        self.batch_range_template.setToolTip("Choose vertical (rotated) or horizontal (centered) text layout")
+        self.batch_range_template.addItem("Vertical Text (Rotated 90°)", "vertical")
+        self.batch_range_template.addItem("Horizontal Text (Centered)", "horizontal")
+        template_layout.addWidget(self.batch_range_template)
+        template_layout.addStretch()
+        settings_layout.addLayout(template_layout)
+
+        # Tape width and font size on one row
+        tape_font_layout = QHBoxLayout()
+
+        # Tape width
+        tape_font_layout.addWidget(QLabel("Tape Width:"))
+        self.batch_range_tape_width = QComboBox()
+        self.batch_range_tape_width.setToolTip("Width of the continuous label tape")
+        for width in sorted(TAPE_WIDTHS.keys()):
+            self.batch_range_tape_width.addItem(f"{width}mm", width)
+        # Set default to 29mm
+        index = self.batch_range_tape_width.findData(29)
+        if index >= 0:
+            self.batch_range_tape_width.setCurrentIndex(index)
+        tape_font_layout.addWidget(self.batch_range_tape_width)
+
+        tape_font_layout.addSpacing(20)
+
+        # Font size
+        tape_font_layout.addWidget(QLabel("Font Size:"))
+        self.batch_range_font_size = QSpinBox()
+        self.batch_range_font_size.setRange(40, 250)
+        self.batch_range_font_size.setValue(100)
+        self.batch_range_font_size.setSuffix("pt")
+        self.batch_range_font_size.setToolTip("Size of the label text (40-250pt)")
+        tape_font_layout.addWidget(self.batch_range_font_size)
+
+        tape_font_layout.addStretch()
+        settings_layout.addLayout(tape_font_layout)
+
+        # Font selection
+        font_select_layout = QHBoxLayout()
+        font_select_layout.addWidget(QLabel("Font:"))
+        self.batch_range_font_path_label = QLabel(DEFAULT_FONT)
+        self.batch_range_font_path_label.setStyleSheet("QLabel { color: gray; font-size: 10pt; }")
+        self.batch_range_font_path_label.setToolTip(DEFAULT_FONT)
+        font_select_layout.addWidget(self.batch_range_font_path_label, 1)
+        self.batch_range_font_button = QPushButton("Browse...")
+        self.batch_range_font_button.setToolTip("Select a custom TrueType font file")
+        self.batch_range_font_button.clicked.connect(self.select_batch_range_font)
+        font_select_layout.addWidget(self.batch_range_font_button)
+        settings_layout.addLayout(font_select_layout)
+
+        settings_group.setLayout(settings_layout)
+        layout.addWidget(settings_group)
+
+        # Action buttons
+        button_layout = QHBoxLayout()
+
+        self.batch_range_preview_button = QPushButton("Preview Range")
+        self.batch_range_preview_button.clicked.connect(self.preview_batch_range)
+        self.batch_range_preview_button.setFont(QFont("Sans", 11, QFont.Weight.Bold))
+        self.batch_range_preview_button.setToolTip("Generate preview of all labels in range")
+        button_layout.addWidget(self.batch_range_preview_button)
+
+        self.batch_range_print_button = QPushButton("Print Range")
+        self.batch_range_print_button.clicked.connect(self.print_batch_range)
+        self.batch_range_print_button.setFont(QFont("Sans", 11, QFont.Weight.Bold))
+        self.batch_range_print_button.setToolTip("Print all labels in range")
+        button_layout.addWidget(self.batch_range_print_button)
+
+        layout.addLayout(button_layout)
+
+        # Preview section
+        preview_group = QGroupBox("Preview")
+        preview_layout = QVBoxLayout()
+
+        # Scrollable preview area
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setMinimumHeight(200)
+
+        self.batch_range_preview_label = QLabel("Set range and click 'Preview Range' to see your labels")
+        self.batch_range_preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.batch_range_preview_label.setStyleSheet("QLabel { background-color: #f0f0f0; padding: 20px; }")
+
+        scroll_area.setWidget(self.batch_range_preview_label)
+        preview_layout.addWidget(scroll_area)
+
+        preview_group.setLayout(preview_layout)
+        layout.addWidget(preview_group, 1)
+
+    def select_batch_range_font(self):
+        """Select font for batch range labels"""
+        font_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Font File",
+            "/usr/share/fonts/truetype/",
+            "TrueType Fonts (*.ttf);;All Files (*)"
+        )
+        if font_path:
+            self.batch_range_font_path_label.setText(font_path)
+
+    def preview_batch_range(self):
+        """Generate preview for batch range labels"""
+        first_num = self.batch_range_first.value()
+        last_num = self.batch_range_last.value()
+
+        if first_num > last_num:
+            QMessageBox.warning(
+                self,
+                "Invalid Range",
+                "First number must be less than or equal to last number."
+            )
+            return
+
+        label_count = last_num - first_num + 1
+        if label_count > 100:
+            reply = QMessageBox.question(
+                self,
+                "Large Batch",
+                f"This will generate {label_count} labels. Continue?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
+        try:
+            self.statusBar().showMessage(f"Generating preview for {label_count} labels...")
+
+            prefix = self.batch_range_prefix_combo.currentData()
+            template = self.batch_range_template.currentData()
+            tape_width = self.batch_range_tape_width.currentData()
+            font_path = self.batch_range_font_path_label.text()
+            font_size = self.batch_range_font_size.value()
+
+            # Generate preview images
+            preview_images = []
+            for num in range(first_num, last_num + 1):
+                # Create label text
+                if prefix:
+                    label_text = f"{prefix} {num}"
+                else:
+                    label_text = str(num)
+
+                # Generate image based on template
+                if template == "vertical":
+                    # For vertical, use create_text_only_label with custom font size
+                    img = create_text_only_label(
+                        text=label_text,
+                        tape_width_mm=tape_width,
+                        font_path=font_path,
+                        font_size=font_size
+                    )
+                    # Rotate for vertical display
+                    img = img.rotate(90, expand=True)
+                else:  # horizontal
+                    img = create_text_only_label(
+                        text=label_text,
+                        tape_width_mm=tape_width,
+                        font_path=font_path,
+                        font_size=font_size
+                    )
+                preview_images.append(img)
+
+            # Combine images vertically for preview (limit to first 20 for display)
+            display_images = preview_images[:20]
+            if display_images:
+                total_height = sum(img.height for img in display_images) + (len(display_images) - 1) * 10
+                max_width = max(img.width for img in display_images)
+
+                combined = Image.new("RGB", (max_width, total_height), (255, 255, 255))
+                y_offset = 0
+                for img in display_images:
+                    combined.paste(img, (0, y_offset))
+                    y_offset += img.height + 10
+
+                # Save and display
+                temp_path = "/tmp/brother_ql_batch_range_preview.png"
+                combined.save(temp_path)
+
+                pixmap = QPixmap(temp_path)
+                self.batch_range_preview_label.setPixmap(pixmap)
+                self.batch_range_preview_label.setScaledContents(False)
+
+                preview_note = f" (showing first 20)" if len(preview_images) > 20 else ""
+                self.statusBar().showMessage(f"Range preview generated: {label_count} labels{preview_note}")
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Preview Error",
+                f"Failed to generate preview:\n{str(e)}"
+            )
+            self.statusBar().showMessage("Preview failed")
+
+    def print_batch_range(self):
+        """Print batch range labels"""
+        first_num = self.batch_range_first.value()
+        last_num = self.batch_range_last.value()
+
+        if first_num > last_num:
+            QMessageBox.warning(
+                self,
+                "Invalid Range",
+                "First number must be less than or equal to last number."
+            )
+            return
+
+        label_count = last_num - first_num + 1
+
+        # Confirm print
+        prefix = self.batch_range_prefix_combo.currentData()
+        prefix_text = f"{prefix} " if prefix else ""
+        reply = QMessageBox.question(
+            self,
+            "Confirm Batch Print",
+            f"Print {label_count} labels ({prefix_text}{first_num} to {prefix_text}{last_num})?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            template = self.batch_range_template.currentData()
+            tape_width = self.batch_range_tape_width.currentData()
+            font_path = self.batch_range_font_path_label.text()
+            font_size = self.batch_range_font_size.value()
+
+            # Print each label
+            for idx, num in enumerate(range(first_num, last_num + 1), 1):
+                self.statusBar().showMessage(f"Printing label {idx}/{label_count}...")
+
+                # Create label text
+                if prefix:
+                    label_text = f"{prefix} {num}"
+                else:
+                    label_text = str(num)
+
+                # Generate image based on template
+                if template == "vertical":
+                    # For vertical, use create_text_only_label with custom font size
+                    img = create_text_only_label(
+                        text=label_text,
+                        tape_width_mm=tape_width,
+                        font_path=font_path,
+                        font_size=font_size
+                    )
+                    # Rotate for vertical display
+                    img = img.rotate(90, expand=True)
+                else:  # horizontal
+                    img = create_text_only_label(
+                        text=label_text,
+                        tape_width_mm=tape_width,
+                        font_path=font_path,
+                        font_size=font_size
+                    )
+
+                # Save to temp file
+                temp_path = "/tmp/brother_ql_batch_range_print.png"
+                img.save(temp_path)
+
+                # Create raster instructions
+                qlr = BrotherQLRaster(PRINTER_MODEL)
+
+                instructions = convert(
+                    qlr=qlr,
+                    images=[temp_path],
+                    label=str(tape_width),
+                    rotate=90,
+                    threshold=70,
+                    dither=False,
+                    compress=False,
+                    red=False,
+                    cut=True,
+                )
+
+                # Send to printer (suppress stderr to hide "operating mode" warning)
+                with suppress_stderr():
+                    send(
+                        instructions=instructions,
+                        printer_identifier=DEFAULT_PRINTER,
+                        backend_identifier=DEFAULT_BACKEND,
+                        blocking=True
+                    )
+
+            self.statusBar().showMessage(f"Batch range print complete! {label_count} labels printed.")
+            QMessageBox.information(
+                self,
+                "Success",
+                f"Batch range printed successfully!\n{label_count} labels printed."
+            )
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Print Error",
+                f"Failed to print batch range:\n{str(e)}"
+            )
+            self.statusBar().showMessage("Batch range print failed")
+
     def init_about_tab(self, parent):
         """Initialize the About tab with product information and tape references"""
         layout = QVBoxLayout(parent)
@@ -1647,7 +1943,7 @@ class LabelPrinterGUI(QMainWindow):
         content_layout.addWidget(title)
 
         # Version
-        version = QLabel("Version 1.1.0")
+        version = QLabel("Version 1.2.0")
         version.setFont(QFont("Sans", 10))
         version.setAlignment(Qt.AlignmentFlag.AlignCenter)
         version.setStyleSheet("color: gray;")
@@ -1735,11 +2031,13 @@ class LabelPrinterGUI(QMainWindow):
             "QR Code + Text labels for inventory tracking",
             "Text-only labels without QR codes",
             "Batch mode for printing up to 10 different labels",
+            "Batch range mode for sequential numbered labels",
             "Live preview before printing",
             "Support for multiple tape widths (29mm, 38mm, 50mm, 62mm)",
-            "Keyboard shortcuts for faster workflow",
+            "Keyboard shortcuts: Enter (preview), Ctrl+P (print), Ctrl+R (reset), Ctrl+Up (increment)",
+            "Auto-focus on input fields when switching tabs",
             "Customizable fonts and font sizes (40-250pt)",
-            "Auto-increment label numbers"
+            "Auto-increment label numbers with +1 button or Ctrl+Up"
         ]
 
         for feature in features_list:

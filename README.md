@@ -211,11 +211,12 @@ Same as Single Label Mode but without QR codes - perfect for simple inventory la
 
 ### Keyboard Shortcuts
 
-| Shortcut  | Action                |
-|-----------|----------------------|
-| Enter     | Generate preview     |
-| Ctrl+P    | Print label          |
-| Ctrl+R    | Clear/reset form     |
+| Shortcut  | Action                      |
+|-----------|-----------------------------|
+| Enter     | Generate preview            |
+| Ctrl+P    | Print label                 |
+| Ctrl+R    | Clear/reset form            |
+| Ctrl+Up   | Increment label number      |
 
 ## Tape Width Specifications
 
