@@ -86,6 +86,11 @@ class LabelPrinterGUI(QMainWindow):
         self.init_text_only_tab(text_only_tab)
         self.tab_widget.addTab(text_only_tab, "Text Only")
 
+        # Create template preview tab
+        template_preview_tab = QWidget()
+        self.init_template_preview_tab(template_preview_tab)
+        self.tab_widget.addTab(template_preview_tab, "Templates")
+
         # Create about tab
         about_tab = QWidget()
         self.init_about_tab(about_tab)
@@ -186,6 +191,7 @@ class LabelPrinterGUI(QMainWindow):
         self.template_combo.addItem("Template 1 (Horizontal)", 1)
         self.template_combo.addItem("Template 2 (Compact/Vertical)", 2)
         self.template_combo.addItem("Template 3 (Rotated Text)", 3)
+        self.template_combo.addItem("Template 4 (Text Only)", 4)
         self.template_combo.currentIndexChanged.connect(self.on_input_changed)
         template_layout.addWidget(self.template_combo)
         template_layout.addStretch()
@@ -310,6 +316,7 @@ class LabelPrinterGUI(QMainWindow):
         self.batch_template_combo.addItem("Template 1 (Horizontal)", 1)
         self.batch_template_combo.addItem("Template 2 (Compact/Vertical)", 2)
         self.batch_template_combo.addItem("Template 3 (Rotated Text)", 3)
+        self.batch_template_combo.addItem("Template 4 (Text Only)", 4)
         template_layout.addWidget(self.batch_template_combo)
         template_layout.addStretch()
         settings_layout.addLayout(template_layout)
@@ -700,6 +707,13 @@ class LabelPrinterGUI(QMainWindow):
                     font_size=self.font_size_spin.value(),
                     include_qr=include_qr
                 )
+            elif template == 4:
+                self.preview_image = create_text_only_label(
+                    text=final_label,
+                    tape_width_mm=self.tape_width_combo.currentData(),
+                    font_path=self.font_path_label.text(),
+                    font_size=self.font_size_spin.value()
+                )
 
             # Save to temp file and display
             temp_path = "/tmp/brother_ql_preview.png"
@@ -787,6 +801,13 @@ class LabelPrinterGUI(QMainWindow):
                         font_path=self.font_path_label.text(),
                         font_size=self.font_size_spin.value(),
                         include_qr=include_qr
+                    )
+                elif template == 4:
+                    self.preview_image = create_text_only_label(
+                        text=final_label,
+                        tape_width_mm=self.tape_width_combo.currentData(),
+                        font_path=self.font_path_label.text(),
+                        font_size=self.font_size_spin.value()
                     )
             except Exception as e:
                 QMessageBox.critical(
@@ -1198,6 +1219,13 @@ class LabelPrinterGUI(QMainWindow):
                         font_path=DEFAULT_FONT,
                         font_size=font_size
                     )
+                elif template == 4:
+                    img = create_text_only_label(
+                        text=label_text,
+                        tape_width_mm=tape_width,
+                        font_path=DEFAULT_FONT,
+                        font_size=font_size
+                    )
                 preview_images.append(img)
 
             # Combine images vertically for preview
@@ -1300,6 +1328,13 @@ class LabelPrinterGUI(QMainWindow):
                 elif template == 3:
                     img = create_label_image_template3(
                         qr_data=url,
+                        text=label_text,
+                        tape_width_mm=tape_width,
+                        font_path=DEFAULT_FONT,
+                        font_size=font_size
+                    )
+                elif template == 4:
+                    img = create_text_only_label(
                         text=label_text,
                         tape_width_mm=tape_width,
                         font_path=DEFAULT_FONT,
