@@ -83,32 +83,23 @@ fi
 echo -e "${BLUE}Generated package: ${GREEN}$(basename "$DEB_FILE")${NC}"
 echo
 
-# Ask to install
-read -p "Do you want to install the package now? (y/N) " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo -e "${BLUE}Installing package...${NC}"
-    sudo dpkg -i "$DEB_FILE"
+# Automatically install the package
+echo -e "${BLUE}Installing package...${NC}"
+sudo dpkg -i "$DEB_FILE"
 
-    # Check if there are missing dependencies
-    if ! sudo apt-get install -f -y; then
-        echo -e "${RED}Failed to install dependencies${NC}"
-        exit 1
-    fi
-
-    echo
-    echo -e "${GREEN}Installation complete!${NC}"
-    echo
-    echo -e "${BLUE}You can now run the application with:${NC}"
-    echo "  brother-label-printer-gui"
-    echo
-    echo "Or find it in your application menu as 'Brother Label Printer'"
-else
-    echo
-    echo -e "${BLUE}Package created but not installed.${NC}"
-    echo "To install later, run:"
-    echo "  sudo dpkg -i $(basename "$DEB_FILE")"
+# Check if there are missing dependencies
+if ! sudo apt-get install -f -y; then
+    echo -e "${RED}Failed to install dependencies${NC}"
+    exit 1
 fi
+
+echo
+echo -e "${GREEN}Installation complete!${NC}"
+echo
+echo -e "${BLUE}You can now run the application with:${NC}"
+echo "  brother-label-printer-gui"
+echo
+echo "Or find it in your application menu as 'Brother Label Printer'"
 
 echo
 echo -e "${GREEN}Done!${NC}"

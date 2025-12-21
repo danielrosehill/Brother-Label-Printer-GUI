@@ -1,7 +1,7 @@
 brother-label-printer (1.2.0) unstable; urgency=medium
 
   * Version 1.2.0
-  * Update release
+  * Updated build-and-install.sh to automatically install without prompting
 
  -- Daniel Rosehill <public@danielrosehill.com>  Sun, 21 Dec 2025 11:13:36 +0200
 
