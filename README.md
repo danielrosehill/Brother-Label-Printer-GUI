@@ -23,6 +23,32 @@ Additional features:
 - Persistent settings across sessions
 - **Easy Debian packaging** for system-wide installation
 
+## Screenshots
+
+### Main Interface (QR + Text Mode)
+![Main Interface](screenshots/main-interface.png)
+*The primary interface for creating labels with QR codes and text. Select a prefix, enter URL and label details, then preview and print.*
+
+### Label Preview
+![Label Preview](screenshots/label-preview.png)
+*Preview your label before printing - showing a "BOX 1" label with QR code, bold text, and subtle box icon watermark.*
+
+### Prefix Dropdown Options
+![Prefix Dropdown](screenshots/prefix-dropdown.png)
+*Choose from common prefixes: Box, Container, Shelf, Asset, or None for custom labels.*
+
+### Batch Mode
+![Batch Mode](screenshots/batch-mode.png)
+*Print up to 10 different labels in one session with individual copy counts for each label.*
+
+### Print Confirmation
+![Print Confirmation](screenshots/print-confirmation.png)
+*Confirmation dialog before printing to prevent accidental prints.*
+
+### About Tab
+![About Tab](screenshots/about-tab.png)
+*Application information including version, features, and continuous tape product references.*
+
 ## Hardware Requirements
 
 - **Printer**: Brother QL-700 (validated - other models not tested)
