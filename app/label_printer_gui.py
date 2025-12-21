@@ -38,7 +38,8 @@ def suppress_stderr():
 # Import constants from print_label.py
 from print_label import (
     TAPE_WIDTHS, PRINTER_MODEL, DEFAULT_PRINTER, DEFAULT_BACKEND,
-    DEFAULT_FONT, BOX_ICON_PATH, create_label_image, create_text_only_label
+    DEFAULT_FONT, BOX_ICON_PATH, create_label_image, create_text_only_label,
+    create_label_image_template2, create_label_image_template3
 )
 
 
@@ -177,6 +178,19 @@ class LabelPrinterGUI(QMainWindow):
         settings_group = QGroupBox("Printer Settings")
         settings_layout = QVBoxLayout()
 
+        # Template selection
+        template_layout = QHBoxLayout()
+        template_layout.addWidget(QLabel("Template:"))
+        self.template_combo = QComboBox()
+        self.template_combo.setToolTip("Label template layout")
+        self.template_combo.addItem("Template 1 (Horizontal)", 1)
+        self.template_combo.addItem("Template 2 (Compact/Vertical)", 2)
+        self.template_combo.addItem("Template 3 (Rotated Text)", 3)
+        self.template_combo.currentIndexChanged.connect(self.on_input_changed)
+        template_layout.addWidget(self.template_combo)
+        template_layout.addStretch()
+        settings_layout.addLayout(template_layout)
+
         # Tape width, font size, and copies on one compact row
         main_settings_layout = QHBoxLayout()
 
@@ -286,26 +300,43 @@ class LabelPrinterGUI(QMainWindow):
 
         # Shared settings
         settings_group = QGroupBox("Shared Printer Settings")
-        settings_layout = QHBoxLayout()
+        settings_layout = QVBoxLayout()
+
+        # First row: Template selection
+        template_layout = QHBoxLayout()
+        template_layout.addWidget(QLabel("Template:"))
+        self.batch_template_combo = QComboBox()
+        self.batch_template_combo.setToolTip("Label template layout (applies to all labels)")
+        self.batch_template_combo.addItem("Template 1 (Horizontal)", 1)
+        self.batch_template_combo.addItem("Template 2 (Compact/Vertical)", 2)
+        self.batch_template_combo.addItem("Template 3 (Rotated Text)", 3)
+        template_layout.addWidget(self.batch_template_combo)
+        template_layout.addStretch()
+        settings_layout.addLayout(template_layout)
+
+        # Second row: Tape width and font size
+        tape_font_layout = QHBoxLayout()
 
         # Tape width
-        settings_layout.addWidget(QLabel("Tape Width:"))
+        tape_font_layout.addWidget(QLabel("Tape Width:"))
         self.batch_tape_width = QComboBox()
         self.batch_tape_width.setToolTip("Width of the continuous label tape (applies to all labels)")
         for width in sorted(TAPE_WIDTHS.keys()):
             self.batch_tape_width.addItem(f"{width}mm", width)
-        settings_layout.addWidget(self.batch_tape_width)
+        tape_font_layout.addWidget(self.batch_tape_width)
 
         # Font size
-        settings_layout.addWidget(QLabel("Font Size:"))
+        tape_font_layout.addWidget(QLabel("Font Size:"))
         self.batch_font_size = QSpinBox()
         self.batch_font_size.setRange(40, 250)
         self.batch_font_size.setValue(100)
         self.batch_font_size.setSuffix("pt")
         self.batch_font_size.setToolTip("Font size for all labels (40-250pt)")
-        settings_layout.addWidget(self.batch_font_size)
+        tape_font_layout.addWidget(self.batch_font_size)
 
-        settings_layout.addStretch()
+        tape_font_layout.addStretch()
+        settings_layout.addLayout(tape_font_layout)
+
         settings_group.setLayout(settings_layout)
         layout.addWidget(settings_group)
 
@@ -638,15 +669,37 @@ class LabelPrinterGUI(QMainWindow):
             # Get final label text with prefix
             final_label = self.get_final_label_text()
 
-            # Generate image
-            self.preview_image = create_label_image(
-                qr_data=url if include_qr else "",
-                text=final_label,
-                tape_width_mm=self.tape_width_combo.currentData(),
-                font_path=self.font_path_label.text(),
-                font_size=self.font_size_spin.value(),
-                include_qr=include_qr
-            )
+            # Get selected template
+            template = self.template_combo.currentData()
+
+            # Generate image based on template selection
+            if template == 1:
+                self.preview_image = create_label_image(
+                    qr_data=url if include_qr else "",
+                    text=final_label,
+                    tape_width_mm=self.tape_width_combo.currentData(),
+                    font_path=self.font_path_label.text(),
+                    font_size=self.font_size_spin.value(),
+                    include_qr=include_qr
+                )
+            elif template == 2:
+                self.preview_image = create_label_image_template2(
+                    qr_data=url if include_qr else "",
+                    text=final_label,
+                    tape_width_mm=self.tape_width_combo.currentData(),
+                    font_path=self.font_path_label.text(),
+                    font_size=self.font_size_spin.value(),
+                    include_qr=include_qr
+                )
+            elif template == 3:
+                self.preview_image = create_label_image_template3(
+                    qr_data=url if include_qr else "",
+                    text=final_label,
+                    tape_width_mm=self.tape_width_combo.currentData(),
+                    font_path=self.font_path_label.text(),
+                    font_size=self.font_size_spin.value(),
+                    include_qr=include_qr
+                )
 
             # Save to temp file and display
             temp_path = "/tmp/brother_ql_preview.png"
@@ -704,15 +757,37 @@ class LabelPrinterGUI(QMainWindow):
                 # Get final label text with prefix
                 final_label = self.get_final_label_text()
 
-                # Generate image without preview
-                self.preview_image = create_label_image(
-                    qr_data=url if include_qr else "",
-                    text=final_label,
-                    tape_width_mm=self.tape_width_combo.currentData(),
-                    font_path=self.font_path_label.text(),
-                    font_size=self.font_size_spin.value(),
-                    include_qr=include_qr
-                )
+                # Get selected template
+                template = self.template_combo.currentData()
+
+                # Generate image without preview based on template selection
+                if template == 1:
+                    self.preview_image = create_label_image(
+                        qr_data=url if include_qr else "",
+                        text=final_label,
+                        tape_width_mm=self.tape_width_combo.currentData(),
+                        font_path=self.font_path_label.text(),
+                        font_size=self.font_size_spin.value(),
+                        include_qr=include_qr
+                    )
+                elif template == 2:
+                    self.preview_image = create_label_image_template2(
+                        qr_data=url if include_qr else "",
+                        text=final_label,
+                        tape_width_mm=self.tape_width_combo.currentData(),
+                        font_path=self.font_path_label.text(),
+                        font_size=self.font_size_spin.value(),
+                        include_qr=include_qr
+                    )
+                elif template == 3:
+                    self.preview_image = create_label_image_template3(
+                        qr_data=url if include_qr else "",
+                        text=final_label,
+                        tape_width_mm=self.tape_width_combo.currentData(),
+                        font_path=self.font_path_label.text(),
+                        font_size=self.font_size_spin.value(),
+                        include_qr=include_qr
+                    )
             except Exception as e:
                 QMessageBox.critical(
                     self,
@@ -1095,15 +1170,34 @@ class LabelPrinterGUI(QMainWindow):
             preview_images = []
             tape_width = self.batch_tape_width.currentData()
             font_size = self.batch_font_size.value()
+            template = self.batch_template_combo.currentData()
 
             for url, label_text, copies in labels:
-                img = create_label_image(
-                    qr_data=url,
-                    text=label_text,
-                    tape_width_mm=tape_width,
-                    font_path=DEFAULT_FONT,
-                    font_size=font_size
-                )
+                # Generate image based on template selection
+                if template == 1:
+                    img = create_label_image(
+                        qr_data=url,
+                        text=label_text,
+                        tape_width_mm=tape_width,
+                        font_path=DEFAULT_FONT,
+                        font_size=font_size
+                    )
+                elif template == 2:
+                    img = create_label_image_template2(
+                        qr_data=url,
+                        text=label_text,
+                        tape_width_mm=tape_width,
+                        font_path=DEFAULT_FONT,
+                        font_size=font_size
+                    )
+                elif template == 3:
+                    img = create_label_image_template3(
+                        qr_data=url,
+                        text=label_text,
+                        tape_width_mm=tape_width,
+                        font_path=DEFAULT_FONT,
+                        font_size=font_size
+                    )
                 preview_images.append(img)
 
             # Combine images vertically for preview
@@ -1180,19 +1274,37 @@ class LabelPrinterGUI(QMainWindow):
             # Print each label
             tape_width = self.batch_tape_width.currentData()
             font_size = self.batch_font_size.value()
+            template = self.batch_template_combo.currentData()
             printed_count = 0
 
             for idx, (url, label_text, copies) in enumerate(labels, 1):
                 self.statusBar().showMessage(f"Printing label {idx}/{len(labels)}...")
 
-                # Generate image
-                img = create_label_image(
-                    qr_data=url,
-                    text=label_text,
-                    tape_width_mm=tape_width,
-                    font_path=DEFAULT_FONT,
-                    font_size=font_size
-                )
+                # Generate image based on template selection
+                if template == 1:
+                    img = create_label_image(
+                        qr_data=url,
+                        text=label_text,
+                        tape_width_mm=tape_width,
+                        font_path=DEFAULT_FONT,
+                        font_size=font_size
+                    )
+                elif template == 2:
+                    img = create_label_image_template2(
+                        qr_data=url,
+                        text=label_text,
+                        tape_width_mm=tape_width,
+                        font_path=DEFAULT_FONT,
+                        font_size=font_size
+                    )
+                elif template == 3:
+                    img = create_label_image_template3(
+                        qr_data=url,
+                        text=label_text,
+                        tape_width_mm=tape_width,
+                        font_path=DEFAULT_FONT,
+                        font_size=font_size
+                    )
 
                 # Save to temp file
                 temp_path = "/tmp/brother_ql_batch_print.png"

@@ -56,6 +56,18 @@ Additional features:
 - **Connection**: USB (USB ID: 04f9:2042)
 - **Tested OS**: Ubuntu 25.10
 
+---
+
+## Template Format
+
+The vertical dimension is always the fixed dimension of the continuous tape length. For ease of reference, these are documented in the About section of the app. 
+
+For example for a 29 MM continuous tape, the label height is always 29mm and the width scales dynamically to wrap the content. 
+
+
+![alt text](images/template_format.png)
+
+---
 ## Installation
 
 ### Option 1: System-Wide Installation (Recommended)
