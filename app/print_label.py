@@ -182,6 +182,7 @@ def create_label_image_template2(qr_data: str, text: str, tape_width_mm: int = 2
     Create a label image with compact vertical layout (Template 2).
 
     Layout: QR code on top (centered), text below QR code (centered)
+    Optimized for maximum QR code size on thin labels - no decorative elements.
 
     Args:
         qr_data: Data to encode in QR code (ignored if include_qr=False)
@@ -199,21 +200,11 @@ def create_label_image_template2(qr_data: str, text: str, tape_width_mm: int = 2
     label_height_px = TAPE_WIDTHS[tape_width_mm]
     padding = 15
 
-    # Small decorative box icon
-    box_icon_size = 80
-    box_img = Image.open(BOX_ICON_PATH).convert("RGBA")
-    box_img = box_img.resize((box_icon_size, box_icon_size), Image.Resampling.LANCZOS)
-
-    # Make box icon semi-transparent
-    alpha = box_img.split()[3] if len(box_img.split()) == 4 else Image.new('L', box_img.size, 255)
-    alpha = alpha.point(lambda p: int(p * 0.3))
-    box_img.putalpha(alpha)
-
-    # QR code generation
+    # QR code generation - maximize size for scannability
     qr_img = None
     qr_size = 0
     if include_qr:
-        qr_size = int(label_height_px * 0.7)  # Slightly smaller for compact layout
+        qr_size = int(label_height_px * 0.85)  # Larger QR code for better scanning
         qr = qrcode.QRCode(
             version=1,
             error_correction=qrcode.constants.ERROR_CORRECT_M,
@@ -235,19 +226,10 @@ def create_label_image_template2(qr_data: str, text: str, tape_width_mm: int = 2
 
     # Calculate image dimensions for vertical layout
     img_width = max(qr_size if include_qr else 0, text_width) + padding * 2
-
-    if include_qr:
-        # QR + gap + text + padding
-        img_height = label_height_px
-    else:
-        # Just text centered
-        img_height = label_height_px
-
-    # Ensure width accommodates the box icon
-    img_width = max(img_width, box_icon_size + padding * 2)
+    img_height = label_height_px
 
     # Create final image
-    img = Image.new("RGBA", (img_width, img_height), (255, 255, 255, 255))
+    img = Image.new("RGB", (img_width, img_height), (255, 255, 255))
 
     # Calculate vertical centering for the combined QR + text block
     if include_qr and qr_img:
@@ -274,11 +256,6 @@ def create_label_image_template2(qr_data: str, text: str, tape_width_mm: int = 2
         text_y = (img_height - (ascent + descent)) // 2 + (descent // 2)
         draw.text((text_x, text_y), text, font=font, fill="black")
 
-    # Paste box icon in bottom right corner
-    box_x = img_width - box_icon_size - padding
-    box_y = img_height - box_icon_size - padding
-    img.paste(box_img, (box_x, box_y), box_img)
-
     # Add border
     border_width = 2
     border_color = (200, 200, 200)
@@ -290,7 +267,6 @@ def create_label_image_template2(qr_data: str, text: str, tape_width_mm: int = 2
         width=border_width
     )
 
-    img = img.convert("RGB")
     return img
 
 
@@ -301,6 +277,7 @@ def create_label_image_template3(qr_data: str, text: str, tape_width_mm: int = 2
     Create a label image with rotated text layout (Template 3).
 
     Layout: QR code on left, text rotated 90° counterclockwise on right
+    Extra padding on right to prevent text cutoff.
 
     Args:
         qr_data: Data to encode in QR code (ignored if include_qr=False)
@@ -317,6 +294,7 @@ def create_label_image_template3(qr_data: str, text: str, tape_width_mm: int = 2
 
     label_height_px = TAPE_WIDTHS[tape_width_mm]
     padding = 15
+    text_right_padding = 40  # Extra padding on right to prevent cutoff
 
     # QR code generation
     qr_img = None
@@ -343,19 +321,19 @@ def create_label_image_template3(qr_data: str, text: str, tape_width_mm: int = 2
     text_height = bbox[3] - bbox[1]
 
     # Create temporary image for text (will be rotated)
-    text_img = Image.new("RGB", (text_width + 20, text_height + 20), (255, 255, 255))
+    # Add extra padding to prevent cutoff
+    text_img = Image.new("RGB", (text_width + 40, text_height + 40), (255, 255, 255))
     text_draw = ImageDraw.Draw(text_img)
-    text_draw.text((10, 10), text, font=font, fill="black")
+    text_draw.text((20, 20), text, font=font, fill="black")
 
     # Rotate text 90° counterclockwise
     text_img_rotated = text_img.rotate(90, expand=True)
 
-    # Calculate final image dimensions
-    # Width = QR + padding + rotated text width + padding
+    # Calculate final image dimensions with extra right padding
     if include_qr:
-        img_width = qr_size + padding * 2 + text_img_rotated.width
+        img_width = qr_size + padding * 2 + text_img_rotated.width + text_right_padding
     else:
-        img_width = text_img_rotated.width + padding * 2
+        img_width = text_img_rotated.width + padding * 2 + text_right_padding
 
     img_height = label_height_px
 
@@ -534,6 +512,102 @@ def create_vertical_text_label(text: str, tape_width_mm: int = 29,
     img.paste(text_img_rotated, (text_x, text_y))
 
     # Add subtle border
+    border_width = 2
+    border_color = (200, 200, 200)
+    draw = ImageDraw.Draw(img)
+    draw.rectangle(
+        [(border_width//2, border_width//2),
+         (img_width - border_width//2 - 1, img_height - border_width//2 - 1)],
+        outline=border_color,
+        width=border_width
+    )
+
+    return img
+
+
+def create_label_image_template6(qr_data: str, text: str, tape_width_mm: int = 29,
+                                  font_path: str = DEFAULT_FONT, font_size: int = 100,
+                                  include_qr: bool = True) -> Image.Image:
+    """
+    Create a label image with text above QR code layout (Template 6).
+
+    Layout: Text on top (centered), QR code below text (centered)
+    Inverse of Template 2 - optimized for readability with text first.
+
+    Args:
+        qr_data: Data to encode in QR code (ignored if include_qr=False)
+        text: Text to display on label
+        tape_width_mm: Tape width in millimeters
+        font_path: Path to TrueType font file
+        font_size: Font size in points
+        include_qr: Whether to include QR code (default: True)
+    """
+    # Get tape width in pixels
+    if tape_width_mm not in TAPE_WIDTHS:
+        raise ValueError(f"Unsupported tape width: {tape_width_mm}mm. "
+                        f"Supported: {list(TAPE_WIDTHS.keys())}")
+
+    label_height_px = TAPE_WIDTHS[tape_width_mm]
+    padding = 15
+
+    # QR code generation - maximize size for scannability
+    qr_img = None
+    qr_size = 0
+    if include_qr:
+        qr_size = int(label_height_px * 0.85)  # Large QR code for better scanning
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_M,
+            box_size=10,
+            border=4,
+        )
+        qr.add_data(qr_data)
+        qr.make(fit=True)
+        qr_img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
+        qr_img = qr_img.resize((qr_size, qr_size), Image.Resampling.NEAREST)
+
+    # Calculate text dimensions
+    font = ImageFont.truetype(font_path, font_size)
+    dummy = Image.new("RGB", (1, 1))
+    draw = ImageDraw.Draw(dummy)
+    bbox = draw.textbbox((0, 0), text, font=font)
+    text_width = bbox[2] - bbox[0]
+    text_height = bbox[3] - bbox[1]
+
+    # Calculate image dimensions for vertical layout
+    img_width = max(qr_size if include_qr else 0, text_width) + padding * 2
+    img_height = label_height_px
+
+    # Create final image
+    img = Image.new("RGB", (img_width, img_height), (255, 255, 255))
+
+    # Calculate vertical centering for the combined text + QR block
+    if include_qr and qr_img:
+        text_gap = padding * 2
+        total_content_height = text_height + text_gap + qr_size
+        start_y = (img_height - total_content_height) // 2
+
+        # Draw text on top (centered horizontally)
+        draw = ImageDraw.Draw(img)
+        text_x = (img_width - text_width) // 2
+
+        ascent, descent = font.getmetrics()
+        text_y = start_y
+        draw.text((text_x, text_y), text, font=font, fill="black")
+
+        # Paste QR code below text (centered horizontally)
+        qr_x = (img_width - qr_size) // 2
+        qr_y = start_y + text_height + text_gap
+        img.paste(qr_img, (qr_x, qr_y))
+    else:
+        # Text-only, centered both ways
+        draw = ImageDraw.Draw(img)
+        text_x = (img_width - text_width) // 2
+        ascent, descent = font.getmetrics()
+        text_y = (img_height - (ascent + descent)) // 2 + (descent // 2)
+        draw.text((text_x, text_y), text, font=font, fill="black")
+
+    # Add border
     border_width = 2
     border_color = (200, 200, 200)
     draw = ImageDraw.Draw(img)

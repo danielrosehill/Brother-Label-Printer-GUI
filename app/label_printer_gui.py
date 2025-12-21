@@ -40,7 +40,8 @@ from print_label import (
     TAPE_WIDTHS, PRINTER_MODEL, DEFAULT_PRINTER, DEFAULT_BACKEND,
     DEFAULT_FONT, BOX_ICON_PATH, create_label_image, create_text_only_label,
     create_label_image_template2, create_label_image_template3,
-    create_vertical_text_label, create_horizontal_centered_label
+    create_vertical_text_label, create_horizontal_centered_label,
+    create_label_image_template6
 )
 
 
@@ -196,10 +197,11 @@ class LabelPrinterGUI(QMainWindow):
         self.template_combo = QComboBox()
         self.template_combo.setToolTip("Label template layout")
         self.template_combo.addItem("Template 1 (Horizontal)", 1)
-        self.template_combo.addItem("Template 2 (Compact/Vertical)", 2)
+        self.template_combo.addItem("Template 2 (QR Above Text)", 2)
         self.template_combo.addItem("Template 3 (Rotated Text)", 3)
         self.template_combo.addItem("Template 4 (Text Only)", 4)
         self.template_combo.addItem("Template 5 (Vertical Auto-fit)", 5)
+        self.template_combo.addItem("Template 6 (Text Above QR)", 6)
         self.template_combo.currentIndexChanged.connect(self.on_input_changed)
         template_layout.addWidget(self.template_combo)
         template_layout.addStretch()
@@ -307,10 +309,11 @@ class LabelPrinterGUI(QMainWindow):
         self.batch_template_combo = QComboBox()
         self.batch_template_combo.setToolTip("Label template layout (applies to all labels)")
         self.batch_template_combo.addItem("Template 1 (Horizontal)", 1)
-        self.batch_template_combo.addItem("Template 2 (Compact/Vertical)", 2)
+        self.batch_template_combo.addItem("Template 2 (QR Above Text)", 2)
         self.batch_template_combo.addItem("Template 3 (Rotated Text)", 3)
         self.batch_template_combo.addItem("Template 4 (Text Only)", 4)
         self.batch_template_combo.addItem("Template 5 (Vertical Auto-fit)", 5)
+        self.batch_template_combo.addItem("Template 6 (Text Above QR)", 6)
         template_layout.addWidget(self.batch_template_combo)
         template_layout.addStretch()
         settings_layout.addLayout(template_layout)
@@ -695,6 +698,15 @@ class LabelPrinterGUI(QMainWindow):
                     tape_width_mm=self.tape_width_combo.currentData(),
                     font_path=self.font_path_label.text()
                 )
+            elif template == 6:
+                self.preview_image = create_label_image_template6(
+                    qr_data=url if include_qr else "",
+                    text=final_label,
+                    tape_width_mm=self.tape_width_combo.currentData(),
+                    font_path=self.font_path_label.text(),
+                    font_size=self.font_size_spin.value(),
+                    include_qr=include_qr
+                )
 
             # Save to temp file and display
             temp_path = "/tmp/brother_ql_preview.png"
@@ -795,6 +807,15 @@ class LabelPrinterGUI(QMainWindow):
                         text=final_label,
                         tape_width_mm=self.tape_width_combo.currentData(),
                         font_path=self.font_path_label.text()
+                    )
+                elif template == 6:
+                    self.preview_image = create_label_image_template6(
+                        qr_data=url if include_qr else "",
+                        text=final_label,
+                        tape_width_mm=self.tape_width_combo.currentData(),
+                        font_path=self.font_path_label.text(),
+                        font_size=self.font_size_spin.value(),
+                        include_qr=include_qr
                     )
             except Exception as e:
                 QMessageBox.critical(
@@ -1216,6 +1237,14 @@ class LabelPrinterGUI(QMainWindow):
                         tape_width_mm=tape_width,
                         font_path=DEFAULT_FONT
                     )
+                elif template == 6:
+                    img = create_label_image_template6(
+                        qr_data=url,
+                        text=label_text,
+                        tape_width_mm=tape_width,
+                        font_path=DEFAULT_FONT,
+                        font_size=font_size
+                    )
                 preview_images.append(img)
 
             # Combine images vertically for preview
@@ -1335,6 +1364,14 @@ class LabelPrinterGUI(QMainWindow):
                         text=label_text,
                         tape_width_mm=tape_width,
                         font_path=DEFAULT_FONT
+                    )
+                elif template == 6:
+                    img = create_label_image_template6(
+                        qr_data=url,
+                        text=label_text,
+                        tape_width_mm=tape_width,
+                        font_path=DEFAULT_FONT,
+                        font_size=font_size
                     )
 
                 # Save to temp file
@@ -1992,8 +2029,8 @@ class LabelPrinterGUI(QMainWindow):
                 "params": {"qr_data": "https://example.com", "text": "Box 1", "tape_width_mm": 29, "font_path": DEFAULT_FONT, "font_size": 100, "include_qr": True}
             },
             {
-                "name": "Template 2: Compact Vertical Layout",
-                "description": "QR code on top, text below, centered vertically. More compact than Template 1.",
+                "name": "Template 2: QR Above Text Layout",
+                "description": "QR code on top, text below, centered vertically. Optimized for maximum QR code size - no decorative elements.",
                 "function": create_label_image_template2,
                 "params": {"qr_data": "https://example.com", "text": "Box 1", "tape_width_mm": 29, "font_path": DEFAULT_FONT, "font_size": 100, "include_qr": True}
             },
@@ -2014,6 +2051,12 @@ class LabelPrinterGUI(QMainWindow):
                 "description": "Text rotated 90° counterclockwise and automatically scaled to fit the tape height. No QR code.",
                 "function": create_vertical_text_label,
                 "params": {"text": "Box 1", "tape_width_mm": 29, "font_path": DEFAULT_FONT}
+            },
+            {
+                "name": "Template 6: Text Above QR Layout",
+                "description": "Text on top, QR code below, centered vertically. Inverse of Template 2 - optimized for text-first readability.",
+                "function": create_label_image_template6,
+                "params": {"qr_data": "https://example.com", "text": "Box 1", "tape_width_mm": 29, "font_path": DEFAULT_FONT, "font_size": 100, "include_qr": True}
             }
         ]
 
