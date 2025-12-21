@@ -1,3 +1,15 @@
+brother-label-printer (1.3.0) unstable; urgency=medium
+
+  * Version 1.3.0
+  * Added Template 6: Text Above QR layout (inverse of Template 2)
+  * Added Templates gallery tab to showcase all available templates
+  * Improved Template 2: Removed box icon watermark, increased QR size to 85% for better scannability
+  * Improved Template 3: Added extra right padding to prevent text cutoff
+  * Updated template descriptions for clarity
+  * Templates now use example.com for mock QR codes in gallery
+
+ -- Daniel Rosehill <public@danielrosehill.com>  Sat, 21 Dec 2025 19:00:00 +0200
+
 brother-label-printer (1.2.0) unstable; urgency=medium
 
   * Version 1.2.0
@@ -28,7 +40,8 @@ brother-label-printer (1.0.0) unstable; urgency=medium
   * Batch mode for up to 10 labels
   * Support for multiple tape widths (29mm, 38mm, 50mm, 62mm)
   * Preview functionality
+  * Customizable fonts and font sizes
   * Keyboard shortcuts
-  * Customizable fonts and sizes
+  * Debian packaging support
 
- -- Daniel Rosehill <public@danielrosehill.com>  Fri, 20 Dec 2024 18:00:00 +0200
+ -- Daniel Rosehill <public@danielrosehill.com>  Fri, 20 Dec 2024 17:30:00 +0200
