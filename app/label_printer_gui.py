@@ -104,6 +104,16 @@ class LabelPrinterGUI(QMainWindow):
         self.init_about_tab(about_tab)
         self.tab_widget.addTab(about_tab, "About")
 
+        # Connect tape width combos to sync across all tabs
+        self.tape_width_combo.currentIndexChanged.connect(
+            lambda: self.sync_tape_widths(self.tape_width_combo.currentData()))
+        self.batch_tape_width.currentIndexChanged.connect(
+            lambda: self.sync_tape_widths(self.batch_tape_width.currentData()))
+        self.text_only_tape_width.currentIndexChanged.connect(
+            lambda: self.sync_tape_widths(self.text_only_tape_width.currentData()))
+        self.batch_range_tape_width.currentIndexChanged.connect(
+            lambda: self.sync_tape_widths(self.batch_range_tape_width.currentData()))
+
         # Status bar
         self.statusBar().showMessage("Ready")
 
@@ -589,11 +599,13 @@ class LabelPrinterGUI(QMainWindow):
 
     def load_settings(self):
         """Load persistent settings"""
-        # Tape width
+        # Tape width - apply to all tabs
         tape_width = self.settings.value("tape_width", 29, type=int)
-        index = self.tape_width_combo.findData(tape_width)
-        if index >= 0:
-            self.tape_width_combo.setCurrentIndex(index)
+        for combo in [self.tape_width_combo, self.batch_tape_width,
+                      self.text_only_tape_width, self.batch_range_tape_width]:
+            index = combo.findData(tape_width)
+            if index >= 0:
+                combo.setCurrentIndex(index)
 
         # Font size
         font_size = self.settings.value("font_size", 100, type=int)
@@ -633,6 +645,17 @@ class LabelPrinterGUI(QMainWindow):
         self.settings.setValue("text_only_prefix", self.text_only_prefix_combo.currentData())
         self.settings.setValue("batch_prefix", self.batch_prefix_combo.currentData())
         self.settings.setValue("skip_print_confirmation", self.skip_print_confirmation)
+
+    def sync_tape_widths(self, tape_width):
+        """Sync all tape width combos to the given value and save"""
+        for combo in [self.tape_width_combo, self.batch_tape_width,
+                      self.text_only_tape_width, self.batch_range_tape_width]:
+            index = combo.findData(tape_width)
+            if index >= 0:
+                combo.blockSignals(True)
+                combo.setCurrentIndex(index)
+                combo.blockSignals(False)
+        self.settings.setValue("tape_width", tape_width)
 
     def select_font(self):
         """Open file dialog to select font"""
