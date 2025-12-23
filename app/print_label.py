@@ -964,6 +964,166 @@ def create_shelf_label(label_text: str, number: str, tape_width_mm: int = 29,
     return img
 
 
+def create_storage_qr_label(qr_data: str, storage_type: str, number: str,
+                            tape_width_mm: int = 62,
+                            font_path: str = DEFAULT_FONT,
+                            include_qr: bool = True) -> Image.Image:
+    """
+    Create a storage label with QR code, storage type below QR, and large number (Template 8).
+
+    Layout: [QR Code on left with storage type text below] [Large number on right]
+    Example: QR + "BOX" below it + large "2" on the right
+    Optimized for larger label sizes (50mm, 62mm).
+
+    Image dimensions:
+    - Width: Variable (becomes label length)
+    - Height: Fixed based on tape width (29mm, 38mm, 50mm, or 62mm)
+
+    Args:
+        qr_data: Data to encode in QR code (ignored if include_qr=False)
+        storage_type: Text to display below QR code (e.g., "BOX", "SHELF", "BIN")
+        number: Number to display on the right (e.g., "1", "2", "10")
+        tape_width_mm: Tape width in millimeters (default: 62 for larger labels)
+        font_path: Path to TrueType font file
+        include_qr: Whether to include QR code (default: True)
+    """
+    # Get tape width in pixels
+    if tape_width_mm not in TAPE_WIDTHS:
+        raise ValueError(f"Unsupported tape width: {tape_width_mm}mm. "
+                        f"Supported: {list(TAPE_WIDTHS.keys())}")
+
+    label_height_px = TAPE_WIDTHS[tape_width_mm]
+    padding = 20
+    gap = 40  # Gap between left section and number
+
+    # QR code generation - sized to leave room for text below
+    qr_img = None
+    qr_size = 0
+    if include_qr:
+        # QR takes up ~65% of height to leave room for text below
+        qr_size = int(label_height_px * 0.65)
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_M,
+            box_size=10,
+            border=4,
+        )
+        qr.add_data(qr_data)
+        qr.make(fit=True)
+        qr_img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
+        qr_img = qr_img.resize((qr_size, qr_size), Image.Resampling.NEAREST)
+
+    # Calculate storage type text size
+    # Text should fit below QR code and be reasonably sized
+    available_for_text = label_height_px - qr_size - padding * 2 if include_qr else label_height_px * 0.3
+    target_text_height = min(available_for_text * 0.8, label_height_px * 0.2)
+
+    # Binary search for storage type font size
+    min_font_size = 20
+    max_font_size = 150
+    storage_font_size = max_font_size
+
+    while max_font_size - min_font_size > 1:
+        test_font_size = (min_font_size + max_font_size) // 2
+        font = ImageFont.truetype(font_path, test_font_size)
+
+        ascent, descent = font.getmetrics()
+        text_height = ascent + descent
+
+        if text_height <= target_text_height:
+            min_font_size = test_font_size
+            storage_font_size = test_font_size
+        else:
+            max_font_size = test_font_size
+
+    # Create storage type text
+    storage_font = ImageFont.truetype(font_path, storage_font_size)
+    dummy = Image.new("RGB", (1, 1))
+    draw = ImageDraw.Draw(dummy)
+    bbox = draw.textbbox((0, 0), storage_type, font=storage_font)
+    storage_text_width = bbox[2] - bbox[0]
+    storage_ascent, storage_descent = storage_font.getmetrics()
+    storage_text_height = storage_ascent + storage_descent
+
+    # Calculate left section width (max of QR and storage text)
+    left_section_width = max(qr_size if include_qr else 0, storage_text_width)
+
+    # Calculate optimal font size for number - should be large and prominent
+    # Number takes up ~75% of vertical space
+    number_target_height = label_height_px * 0.75
+
+    min_font_size = 100
+    max_font_size = 600
+    number_font_size = max_font_size
+
+    while max_font_size - min_font_size > 1:
+        test_font_size = (min_font_size + max_font_size) // 2
+        font = ImageFont.truetype(font_path, test_font_size)
+
+        ascent, descent = font.getmetrics()
+        text_height = ascent + descent
+
+        if text_height <= number_target_height:
+            min_font_size = test_font_size
+            number_font_size = test_font_size
+        else:
+            max_font_size = test_font_size
+
+    # Create number text
+    number_font = ImageFont.truetype(font_path, number_font_size)
+    dummy = Image.new("RGB", (1, 1))
+    draw = ImageDraw.Draw(dummy)
+    bbox = draw.textbbox((0, 0), number, font=number_font)
+    number_width = bbox[2] - bbox[0]
+
+    # Calculate final image dimensions
+    img_width = padding + left_section_width + gap + number_width + padding
+    img_height = label_height_px
+
+    # Create final image
+    img = Image.new("RGB", (img_width, img_height), (255, 255, 255))
+    draw = ImageDraw.Draw(img)
+
+    # Calculate vertical layout for left section (QR + text stacked)
+    if include_qr and qr_img:
+        total_left_height = qr_size + storage_text_height
+        left_start_y = (img_height - total_left_height) // 2
+
+        # Paste QR code (centered horizontally within left section)
+        qr_x = padding + (left_section_width - qr_size) // 2
+        img.paste(qr_img, (qr_x, left_start_y))
+
+        # Draw storage type text below QR (centered within left section)
+        storage_x = padding + (left_section_width - storage_text_width) // 2
+        storage_y = left_start_y + qr_size
+        draw.text((storage_x, storage_y), storage_type, font=storage_font, fill="black")
+    else:
+        # No QR - just center the storage type text in left section
+        storage_x = padding + (left_section_width - storage_text_width) // 2
+        storage_y = (img_height - storage_text_height) // 2
+        draw.text((storage_x, storage_y), storage_type, font=storage_font, fill="black")
+
+    # Draw large number on right (centered vertically)
+    number_x = padding + left_section_width + gap
+
+    number_ascent, number_descent = number_font.getmetrics()
+    number_y = (img_height - (number_ascent + number_descent)) // 2 + (number_descent // 2)
+
+    draw.text((number_x, number_y), number, font=number_font, fill="black")
+
+    # Add subtle border
+    border_width = 2
+    border_color = (200, 200, 200)
+    draw.rectangle(
+        [(border_width//2, border_width//2),
+         (img_width - border_width//2 - 1, img_height - border_width//2 - 1)],
+        outline=border_color,
+        width=border_width
+    )
+
+    return img
+
+
 def print_label(image: Image.Image, tape_width_mm: int = 29,
                 printer: str = DEFAULT_PRINTER, backend: str = DEFAULT_BACKEND,
                 rotate: int = 90):

@@ -13,7 +13,8 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QComboBox, QSpinBox, QGroupBox,
     QFileDialog, QMessageBox, QScrollArea, QToolButton, QTabWidget,
-    QTableWidget, QTableWidgetItem, QHeaderView, QCheckBox
+    QTableWidget, QTableWidgetItem, QHeaderView, QCheckBox, QDialog,
+    QDialogButtonBox, QFormLayout
 )
 from PyQt6.QtCore import Qt, QSettings, QTimer
 from PyQt6.QtGui import QPixmap, QFont, QAction, QKeySequence, QIcon
@@ -41,8 +42,78 @@ from print_label import (
     DEFAULT_FONT, BOX_ICON_PATH, create_label_image, create_text_only_label,
     create_label_image_template2, create_label_image_template3,
     create_vertical_text_label, create_horizontal_centered_label,
-    create_label_image_template6, create_shelf_label
+    create_label_image_template6, create_shelf_label, create_storage_qr_label
 )
+
+
+class SettingsDialog(QDialog):
+    """Dialog for printer settings (paper size, font)"""
+
+    def __init__(self, parent, tape_width, font_size, font_path):
+        super().__init__(parent)
+        self.setWindowTitle("Printer Settings")
+        self.setModal(True)
+        self.setMinimumWidth(350)
+
+        layout = QVBoxLayout(self)
+        form_layout = QFormLayout()
+
+        # Paper size dropdown
+        self.tape_width_combo = QComboBox()
+        for width in sorted(TAPE_WIDTHS.keys()):
+            self.tape_width_combo.addItem(f"{width}mm", width)
+        index = self.tape_width_combo.findData(tape_width)
+        if index >= 0:
+            self.tape_width_combo.setCurrentIndex(index)
+        form_layout.addRow("Paper Size:", self.tape_width_combo)
+
+        # Font size spinner
+        self.font_size_spin = QSpinBox()
+        self.font_size_spin.setRange(40, 250)
+        self.font_size_spin.setValue(font_size)
+        self.font_size_spin.setSuffix(" pt")
+        form_layout.addRow("Font Size:", self.font_size_spin)
+
+        # Font path with browse button
+        font_layout = QHBoxLayout()
+        self.font_path_label = QLabel(os.path.basename(font_path))
+        self.font_path_label.setToolTip(font_path)
+        self.font_path = font_path
+        font_layout.addWidget(self.font_path_label, 1)
+        browse_btn = QPushButton("Browse...")
+        browse_btn.clicked.connect(self.browse_font)
+        font_layout.addWidget(browse_btn)
+        form_layout.addRow("Font:", font_layout)
+
+        layout.addLayout(form_layout)
+
+        # OK/Cancel buttons
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+
+    def browse_font(self):
+        font_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Font File",
+            "/usr/share/fonts/truetype/",
+            "TrueType Fonts (*.ttf);;All Files (*)"
+        )
+        if font_path:
+            self.font_path = font_path
+            self.font_path_label.setText(os.path.basename(font_path))
+            self.font_path_label.setToolTip(font_path)
+
+    def get_values(self):
+        """Return the current settings values"""
+        return {
+            'tape_width': self.tape_width,
+            'font_size': self.font_size,
+            'font_path': self.font_path
+        }
 
 
 class LabelPrinterGUI(QMainWindow):
@@ -56,6 +127,10 @@ class LabelPrinterGUI(QMainWindow):
         self.last_copies = 1  # Track last used copies for batch mode
         self.current_copies = 1  # Track current copies selection
         self.skip_print_confirmation = False  # Allow users to skip confirmations
+        # Printer settings (loaded from QSettings)
+        self.tape_width = 62  # Default, will be overwritten by load_settings
+        self.font_size = 100
+        self.font_path = DEFAULT_FONT
         self.init_ui()
         self.load_settings()
         self.setup_shortcuts()
@@ -104,15 +179,13 @@ class LabelPrinterGUI(QMainWindow):
         self.init_about_tab(about_tab)
         self.tab_widget.addTab(about_tab, "About")
 
-        # Connect tape width combos to sync across all tabs
-        self.tape_width_combo.currentIndexChanged.connect(
-            lambda: self.sync_tape_widths(self.tape_width_combo.currentData()))
-        self.batch_tape_width.currentIndexChanged.connect(
-            lambda: self.sync_tape_widths(self.batch_tape_width.currentData()))
-        self.text_only_tape_width.currentIndexChanged.connect(
-            lambda: self.sync_tape_widths(self.text_only_tape_width.currentData()))
-        self.batch_range_tape_width.currentIndexChanged.connect(
-            lambda: self.sync_tape_widths(self.batch_range_tape_width.currentData()))
+        # Menu bar
+        menubar = self.menuBar()
+        settings_menu = menubar.addMenu("Settings")
+        settings_action = QAction("Printer Settings...", self)
+        settings_action.setShortcut("Ctrl+,")
+        settings_action.triggered.connect(self.open_settings)
+        settings_menu.addAction(settings_action)
 
         # Status bar
         self.statusBar().showMessage("Ready")
@@ -213,59 +286,23 @@ class LabelPrinterGUI(QMainWindow):
         self.template_combo.addItem("Template 5 (Vertical Auto-fit)", 5)
         self.template_combo.addItem("Template 6 (Text Above QR)", 6)
         self.template_combo.addItem("Template 7 (Shelf Label)", 7)
+        self.template_combo.addItem("Template 8 (Storage QR Label)", 8)
         self.template_combo.currentIndexChanged.connect(self.on_input_changed)
         template_layout.addWidget(self.template_combo)
         template_layout.addStretch()
         settings_layout.addLayout(template_layout)
 
-        # Tape width, font size, and copies on one compact row
-        main_settings_layout = QHBoxLayout()
-
-        # Tape width
-        main_settings_layout.addWidget(QLabel("Tape:"))
-        self.tape_width_combo = QComboBox()
-        self.tape_width_combo.setToolTip("Width of the continuous label tape")
-        for width in sorted(TAPE_WIDTHS.keys()):
-            self.tape_width_combo.addItem(f"{width}mm", width)
-        main_settings_layout.addWidget(self.tape_width_combo)
-
-        main_settings_layout.addSpacing(20)
-
-        # Font size
-        main_settings_layout.addWidget(QLabel("Font:"))
-        self.font_size_spin = QSpinBox()
-        self.font_size_spin.setRange(40, 250)
-        self.font_size_spin.setValue(100)
-        self.font_size_spin.setSuffix("pt")
-        self.font_size_spin.setToolTip("Size of the label text (40-250pt)")
-        main_settings_layout.addWidget(self.font_size_spin)
-
-        main_settings_layout.addSpacing(20)
-
-        # Copies - simple spinner for ease of use
-        main_settings_layout.addWidget(QLabel("Copies:"))
+        # Copies
+        copies_layout = QHBoxLayout()
+        copies_layout.addWidget(QLabel("Copies:"))
         self.copies_spin = QSpinBox()
         self.copies_spin.setRange(1, 20)
         self.copies_spin.setValue(1)
         self.copies_spin.setToolTip("Number of copies to print (1-20)")
         self.copies_spin.setFixedWidth(70)
-        main_settings_layout.addWidget(self.copies_spin)
-
-        main_settings_layout.addStretch()
-        settings_layout.addLayout(main_settings_layout)
-
-        # Font selection
-        font_select_layout = QHBoxLayout()
-        font_select_layout.addWidget(QLabel("Font:"))
-        self.font_path_label = QLabel(DEFAULT_FONT)
-        self.font_path_label.setStyleSheet("QLabel { color: gray; font-size: 10pt; }")
-        self.font_path_label.setToolTip(DEFAULT_FONT)
-        font_select_layout.addWidget(self.font_path_label, 1)
-        self.font_button = QPushButton("Browse...")
-        self.font_button.setToolTip("Select a custom TrueType font file")
-        self.font_button.clicked.connect(self.select_font)
-        font_select_layout.addWidget(self.font_button)
-        settings_layout.addLayout(font_select_layout)
+        copies_layout.addWidget(self.copies_spin)
+        copies_layout.addStretch()
+        settings_layout.addLayout(copies_layout)
 
         settings_group.setLayout(settings_layout)
         layout.addWidget(settings_group)
@@ -326,6 +363,7 @@ class LabelPrinterGUI(QMainWindow):
         self.batch_template_combo.addItem("Template 5 (Vertical Auto-fit)", 5)
         self.batch_template_combo.addItem("Template 6 (Text Above QR)", 6)
         self.batch_template_combo.addItem("Template 7 (Shelf Label)", 7)
+        self.batch_template_combo.addItem("Template 8 (Storage QR Label)", 8)
         template_layout.addWidget(self.batch_template_combo)
         template_layout.addStretch()
         settings_layout.addLayout(template_layout)
@@ -344,29 +382,6 @@ class LabelPrinterGUI(QMainWindow):
         prefix_layout.addWidget(self.batch_prefix_combo)
         prefix_layout.addStretch()
         settings_layout.addLayout(prefix_layout)
-
-        # Second row: Tape width and font size
-        tape_font_layout = QHBoxLayout()
-
-        # Tape width
-        tape_font_layout.addWidget(QLabel("Tape Width:"))
-        self.batch_tape_width = QComboBox()
-        self.batch_tape_width.setToolTip("Width of the continuous label tape (applies to all labels)")
-        for width in sorted(TAPE_WIDTHS.keys()):
-            self.batch_tape_width.addItem(f"{width}mm", width)
-        tape_font_layout.addWidget(self.batch_tape_width)
-
-        # Font size
-        tape_font_layout.addWidget(QLabel("Font Size:"))
-        self.batch_font_size = QSpinBox()
-        self.batch_font_size.setRange(40, 250)
-        self.batch_font_size.setValue(100)
-        self.batch_font_size.setSuffix("pt")
-        self.batch_font_size.setToolTip("Font size for all labels (40-250pt)")
-        tape_font_layout.addWidget(self.batch_font_size)
-
-        tape_font_layout.addStretch()
-        settings_layout.addLayout(tape_font_layout)
 
         settings_group.setLayout(settings_layout)
         layout.addWidget(settings_group)
@@ -502,61 +517,20 @@ class LabelPrinterGUI(QMainWindow):
         layout.addWidget(input_group)
 
         # Settings section
-        settings_group = QGroupBox("Printer Settings")
+        settings_group = QGroupBox("Print Settings")
         settings_layout = QVBoxLayout()
 
-        # Tape width, font size, and copies on one compact row
-        main_settings_layout = QHBoxLayout()
-
-        # Tape width
-        main_settings_layout.addWidget(QLabel("Tape:"))
-        self.text_only_tape_width = QComboBox()
-        self.text_only_tape_width.setToolTip("Width of the continuous label tape")
-        for width in sorted(TAPE_WIDTHS.keys()):
-            self.text_only_tape_width.addItem(f"{width}mm", width)
-        # Set default to 29mm
-        index = self.text_only_tape_width.findData(29)
-        if index >= 0:
-            self.text_only_tape_width.setCurrentIndex(index)
-        main_settings_layout.addWidget(self.text_only_tape_width)
-
-        main_settings_layout.addSpacing(20)
-
-        # Font size
-        main_settings_layout.addWidget(QLabel("Font:"))
-        self.text_only_font_size = QSpinBox()
-        self.text_only_font_size.setRange(40, 250)
-        self.text_only_font_size.setValue(100)
-        self.text_only_font_size.setSuffix("pt")
-        self.text_only_font_size.setToolTip("Size of the label text (40-250pt)")
-        main_settings_layout.addWidget(self.text_only_font_size)
-
-        main_settings_layout.addSpacing(20)
-
-        # Copies - simple spinner for ease of use
-        main_settings_layout.addWidget(QLabel("Copies:"))
+        # Copies
+        copies_layout = QHBoxLayout()
+        copies_layout.addWidget(QLabel("Copies:"))
         self.text_only_copies_spin = QSpinBox()
         self.text_only_copies_spin.setRange(1, 20)
         self.text_only_copies_spin.setValue(1)
         self.text_only_copies_spin.setToolTip("Number of copies to print (1-20)")
         self.text_only_copies_spin.setFixedWidth(70)
-        main_settings_layout.addWidget(self.text_only_copies_spin)
-
-        main_settings_layout.addStretch()
-        settings_layout.addLayout(main_settings_layout)
-
-        # Font selection
-        font_select_layout = QHBoxLayout()
-        font_select_layout.addWidget(QLabel("Font:"))
-        self.text_only_font_path_label = QLabel(DEFAULT_FONT)
-        self.text_only_font_path_label.setStyleSheet("QLabel { color: gray; font-size: 10pt; }")
-        self.text_only_font_path_label.setToolTip(DEFAULT_FONT)
-        font_select_layout.addWidget(self.text_only_font_path_label, 1)
-        self.text_only_font_button = QPushButton("Browse...")
-        self.text_only_font_button.setToolTip("Select a custom TrueType font file")
-        self.text_only_font_button.clicked.connect(self.select_text_only_font)
-        font_select_layout.addWidget(self.text_only_font_button)
-        settings_layout.addLayout(font_select_layout)
+        copies_layout.addWidget(self.text_only_copies_spin)
+        copies_layout.addStretch()
+        settings_layout.addLayout(copies_layout)
 
         settings_group.setLayout(settings_layout)
         layout.addWidget(settings_group)
@@ -599,21 +573,10 @@ class LabelPrinterGUI(QMainWindow):
 
     def load_settings(self):
         """Load persistent settings"""
-        # Tape width - apply to all tabs
-        tape_width = self.settings.value("tape_width", 29, type=int)
-        for combo in [self.tape_width_combo, self.batch_tape_width,
-                      self.text_only_tape_width, self.batch_range_tape_width]:
-            index = combo.findData(tape_width)
-            if index >= 0:
-                combo.setCurrentIndex(index)
-
-        # Font size
-        font_size = self.settings.value("font_size", 100, type=int)
-        self.font_size_spin.setValue(font_size)
-
-        # Font path
-        font_path = self.settings.value("font_path", DEFAULT_FONT)
-        self.font_path_label.setText(font_path)
+        # Printer settings (tape width, font size, font path)
+        self.tape_width = self.settings.value("tape_width", 62, type=int)
+        self.font_size = self.settings.value("font_size", 100, type=int)
+        self.font_path = self.settings.value("font_path", DEFAULT_FONT)
 
         # Prefix (QR+Text tab)
         prefix = self.settings.value("prefix", "")
@@ -638,36 +601,26 @@ class LabelPrinterGUI(QMainWindow):
 
     def save_settings(self):
         """Save persistent settings"""
-        self.settings.setValue("tape_width", self.tape_width_combo.currentData())
-        self.settings.setValue("font_size", self.font_size_spin.value())
-        self.settings.setValue("font_path", self.font_path_label.text())
+        self.settings.setValue("tape_width", self.tape_width)
+        self.settings.setValue("font_size", self.font_size)
+        self.settings.setValue("font_path", self.font_path)
         self.settings.setValue("prefix", self.prefix_combo.currentData())
         self.settings.setValue("text_only_prefix", self.text_only_prefix_combo.currentData())
         self.settings.setValue("batch_prefix", self.batch_prefix_combo.currentData())
         self.settings.setValue("skip_print_confirmation", self.skip_print_confirmation)
 
-    def sync_tape_widths(self, tape_width):
-        """Sync all tape width combos to the given value and save"""
-        for combo in [self.tape_width_combo, self.batch_tape_width,
-                      self.text_only_tape_width, self.batch_range_tape_width]:
-            index = combo.findData(tape_width)
-            if index >= 0:
-                combo.blockSignals(True)
-                combo.setCurrentIndex(index)
-                combo.blockSignals(False)
-        self.settings.setValue("tape_width", tape_width)
-
-    def select_font(self):
-        """Open file dialog to select font"""
-        font_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Select Font File",
-            "/usr/share/fonts/truetype/",
-            "TrueType Fonts (*.ttf);;All Files (*)"
-        )
-        if font_path:
-            self.font_path_label.setText(font_path)
+    def open_settings(self):
+        """Open the printer settings dialog"""
+        dialog = SettingsDialog(self, self.tape_width, self.font_size, self.font_path)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            values = dialog.get_values()
+            self.tape_width = values['tape_width']
+            self.font_size = values['font_size']
+            self.font_path = values['font_path']
             self.save_settings()
+            self.statusBar().showMessage(
+                f"Settings updated: {self.tape_width}mm tape, {self.font_size}pt font", 3000
+            )
 
     def generate_preview(self):
         """Generate preview image"""
@@ -709,49 +662,49 @@ class LabelPrinterGUI(QMainWindow):
                 self.preview_image = create_label_image(
                     qr_data=url if include_qr else "",
                     text=final_label,
-                    tape_width_mm=self.tape_width_combo.currentData(),
-                    font_path=self.font_path_label.text(),
-                    font_size=self.font_size_spin.value(),
+                    tape_width_mm=self.tape_width,
+                    font_path=self.font_path,
+                    font_size=self.font_size,
                     include_qr=include_qr
                 )
             elif template == 2:
                 self.preview_image = create_label_image_template2(
                     qr_data=url if include_qr else "",
                     text=final_label,
-                    tape_width_mm=self.tape_width_combo.currentData(),
-                    font_path=self.font_path_label.text(),
-                    font_size=self.font_size_spin.value(),
+                    tape_width_mm=self.tape_width,
+                    font_path=self.font_path,
+                    font_size=self.font_size,
                     include_qr=include_qr
                 )
             elif template == 3:
                 self.preview_image = create_label_image_template3(
                     qr_data=url if include_qr else "",
                     text=final_label,
-                    tape_width_mm=self.tape_width_combo.currentData(),
-                    font_path=self.font_path_label.text(),
-                    font_size=self.font_size_spin.value(),
+                    tape_width_mm=self.tape_width,
+                    font_path=self.font_path,
+                    font_size=self.font_size,
                     include_qr=include_qr
                 )
             elif template == 4:
                 self.preview_image = create_text_only_label(
                     text=final_label,
-                    tape_width_mm=self.tape_width_combo.currentData(),
-                    font_path=self.font_path_label.text(),
-                    font_size=self.font_size_spin.value()
+                    tape_width_mm=self.tape_width,
+                    font_path=self.font_path,
+                    font_size=self.font_size
                 )
             elif template == 5:
                 self.preview_image = create_vertical_text_label(
                     text=final_label,
-                    tape_width_mm=self.tape_width_combo.currentData(),
-                    font_path=self.font_path_label.text()
+                    tape_width_mm=self.tape_width,
+                    font_path=self.font_path
                 )
             elif template == 6:
                 self.preview_image = create_label_image_template6(
                     qr_data=url if include_qr else "",
                     text=final_label,
-                    tape_width_mm=self.tape_width_combo.currentData(),
-                    font_path=self.font_path_label.text(),
-                    font_size=self.font_size_spin.value(),
+                    tape_width_mm=self.tape_width,
+                    font_path=self.font_path,
+                    font_size=self.font_size,
                     include_qr=include_qr
                 )
             elif template == 7:
@@ -767,8 +720,25 @@ class LabelPrinterGUI(QMainWindow):
                 self.preview_image = create_shelf_label(
                     label_text=label_text,
                     number=number,
-                    tape_width_mm=self.tape_width_combo.currentData(),
-                    font_path=self.font_path_label.text()
+                    tape_width_mm=self.tape_width,
+                    font_path=self.font_path
+                )
+            elif template == 8:
+                # Storage QR label: QR code with storage type below and large number on right
+                # Format: "BOX 2" -> storage_type="BOX", number="2"
+                parts = final_label.rsplit(' ', 1)
+                if len(parts) == 2:
+                    storage_type, number = parts
+                else:
+                    storage_type = final_label
+                    number = ""
+                self.preview_image = create_storage_qr_label(
+                    qr_data=url if include_qr else "",
+                    storage_type=storage_type,
+                    number=number,
+                    tape_width_mm=self.tape_width,
+                    font_path=self.font_path,
+                    include_qr=include_qr
                 )
 
             # Save to temp file and display
@@ -783,7 +753,7 @@ class LabelPrinterGUI(QMainWindow):
             # Enable print button
             self.print_button.setEnabled(True)
 
-            tape_width = self.tape_width_combo.currentData()
+            tape_width = self.tape_width
             label_type = "with QR code" if include_qr else "text-only"
             self.statusBar().showMessage(
                 f"Preview generated ({label_type}): {self.preview_image.size[0]}x{self.preview_image.size[1]}px "
@@ -835,49 +805,49 @@ class LabelPrinterGUI(QMainWindow):
                     self.preview_image = create_label_image(
                         qr_data=url if include_qr else "",
                         text=final_label,
-                        tape_width_mm=self.tape_width_combo.currentData(),
-                        font_path=self.font_path_label.text(),
-                        font_size=self.font_size_spin.value(),
+                        tape_width_mm=self.tape_width,
+                        font_path=self.font_path,
+                        font_size=self.font_size,
                         include_qr=include_qr
                     )
                 elif template == 2:
                     self.preview_image = create_label_image_template2(
                         qr_data=url if include_qr else "",
                         text=final_label,
-                        tape_width_mm=self.tape_width_combo.currentData(),
-                        font_path=self.font_path_label.text(),
-                        font_size=self.font_size_spin.value(),
+                        tape_width_mm=self.tape_width,
+                        font_path=self.font_path,
+                        font_size=self.font_size,
                         include_qr=include_qr
                     )
                 elif template == 3:
                     self.preview_image = create_label_image_template3(
                         qr_data=url if include_qr else "",
                         text=final_label,
-                        tape_width_mm=self.tape_width_combo.currentData(),
-                        font_path=self.font_path_label.text(),
-                        font_size=self.font_size_spin.value(),
+                        tape_width_mm=self.tape_width,
+                        font_path=self.font_path,
+                        font_size=self.font_size,
                         include_qr=include_qr
                     )
                 elif template == 4:
                     self.preview_image = create_text_only_label(
                         text=final_label,
-                        tape_width_mm=self.tape_width_combo.currentData(),
-                        font_path=self.font_path_label.text(),
-                        font_size=self.font_size_spin.value()
+                        tape_width_mm=self.tape_width,
+                        font_path=self.font_path,
+                        font_size=self.font_size
                     )
                 elif template == 5:
                     self.preview_image = create_vertical_text_label(
                         text=final_label,
-                        tape_width_mm=self.tape_width_combo.currentData(),
-                        font_path=self.font_path_label.text()
+                        tape_width_mm=self.tape_width,
+                        font_path=self.font_path
                     )
                 elif template == 6:
                     self.preview_image = create_label_image_template6(
                         qr_data=url if include_qr else "",
                         text=final_label,
-                        tape_width_mm=self.tape_width_combo.currentData(),
-                        font_path=self.font_path_label.text(),
-                        font_size=self.font_size_spin.value(),
+                        tape_width_mm=self.tape_width,
+                        font_path=self.font_path,
+                        font_size=self.font_size,
                         include_qr=include_qr
                     )
                 elif template == 7:
@@ -891,8 +861,24 @@ class LabelPrinterGUI(QMainWindow):
                     self.preview_image = create_shelf_label(
                         label_text=label_text,
                         number=number,
-                        tape_width_mm=self.tape_width_combo.currentData(),
-                        font_path=self.font_path_label.text()
+                        tape_width_mm=self.tape_width,
+                        font_path=self.font_path
+                    )
+                elif template == 8:
+                    # Storage QR label: QR code with storage type below and large number on right
+                    parts = final_label.rsplit(' ', 1)
+                    if len(parts) == 2:
+                        storage_type, number = parts
+                    else:
+                        storage_type = final_label
+                        number = ""
+                    self.preview_image = create_storage_qr_label(
+                        qr_data=url if include_qr else "",
+                        storage_type=storage_type,
+                        number=number,
+                        tape_width_mm=self.tape_width,
+                        font_path=self.font_path,
+                        include_qr=include_qr
                     )
             except Exception as e:
                 QMessageBox.critical(
@@ -909,7 +895,7 @@ class LabelPrinterGUI(QMainWindow):
         reply = QMessageBox.question(
             self,
             "Confirm Print",
-            f"Print {copies} {label_type}{'s' if copies > 1 else ''} on {self.tape_width_combo.currentData()}mm tape?",
+            f"Print {copies} {label_type}{'s' if copies > 1 else ''} on {self.tape_width}mm tape?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
 
@@ -929,7 +915,7 @@ class LabelPrinterGUI(QMainWindow):
                     instructions = convert(
                         qlr=qlr,
                         images=[temp_path],
-                        label=str(self.tape_width_combo.currentData()),
+                        label=str(self.tape_width),
                         rotate=90,
                         threshold=70,
                         dither=False,
@@ -1271,8 +1257,8 @@ class LabelPrinterGUI(QMainWindow):
 
             # Generate preview images
             preview_images = []
-            tape_width = self.batch_tape_width.currentData()
-            font_size = self.batch_font_size.value()
+            tape_width = self.tape_width
+            font_size = self.font_size
             template = self.batch_template_combo.currentData()
             prefix = self.batch_prefix_combo.currentData()
 
@@ -1338,6 +1324,21 @@ class LabelPrinterGUI(QMainWindow):
                         number = ""
                     img = create_shelf_label(
                         label_text=label_part,
+                        number=number,
+                        tape_width_mm=tape_width,
+                        font_path=DEFAULT_FONT
+                    )
+                elif template == 8:
+                    # Storage QR label: QR code with storage type below and large number on right
+                    parts = final_label_text.rsplit(' ', 1)
+                    if len(parts) == 2:
+                        storage_type, number = parts
+                    else:
+                        storage_type = final_label_text
+                        number = ""
+                    img = create_storage_qr_label(
+                        qr_data=url,
+                        storage_type=storage_type,
                         number=number,
                         tape_width_mm=tape_width,
                         font_path=DEFAULT_FONT
@@ -1416,8 +1417,8 @@ class LabelPrinterGUI(QMainWindow):
                 return
 
             # Print each label
-            tape_width = self.batch_tape_width.currentData()
-            font_size = self.batch_font_size.value()
+            tape_width = self.tape_width
+            font_size = self.font_size
             template = self.batch_template_combo.currentData()
             prefix = self.batch_prefix_combo.currentData()
             printed_count = 0
@@ -1487,6 +1488,21 @@ class LabelPrinterGUI(QMainWindow):
                         number = ""
                     img = create_shelf_label(
                         label_text=label_part,
+                        number=number,
+                        tape_width_mm=tape_width,
+                        font_path=DEFAULT_FONT
+                    )
+                elif template == 8:
+                    # Storage QR label: QR code with storage type below and large number on right
+                    parts = final_label_text.rsplit(' ', 1)
+                    if len(parts) == 2:
+                        storage_type, number = parts
+                    else:
+                        storage_type = final_label_text
+                        number = ""
+                    img = create_storage_qr_label(
+                        qr_data=url,
+                        storage_type=storage_type,
                         number=number,
                         tape_width_mm=tape_width,
                         font_path=DEFAULT_FONT
@@ -1596,17 +1612,6 @@ class LabelPrinterGUI(QMainWindow):
         """Get the currently selected number of copies for text-only"""
         return self.text_only_copies_spin.value()
 
-    def select_text_only_font(self):
-        """Select font for text-only labels"""
-        font_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Select Font File",
-            "/usr/share/fonts/truetype/",
-            "TrueType Fonts (*.ttf);;All Files (*)"
-        )
-        if font_path:
-            self.text_only_font_path_label.setText(font_path)
-
     def generate_text_only_preview(self):
         """Generate preview for text-only label"""
         text = self.text_only_input.text().strip()
@@ -1628,9 +1633,9 @@ class LabelPrinterGUI(QMainWindow):
             # Generate image
             self.text_only_preview_image = create_text_only_label(
                 text=final_text,
-                tape_width_mm=self.text_only_tape_width.currentData(),
-                font_path=self.text_only_font_path_label.text(),
-                font_size=self.text_only_font_size.value()
+                tape_width_mm=self.tape_width,
+                font_path=self.font_path,
+                font_size=self.font_size
             )
 
             # Save to temp file and display
@@ -1642,7 +1647,7 @@ class LabelPrinterGUI(QMainWindow):
             self.text_only_preview_label.setPixmap(pixmap)
             self.text_only_preview_label.setScaledContents(False)
 
-            tape_width = self.text_only_tape_width.currentData()
+            tape_width = self.tape_width
             self.statusBar().showMessage(
                 f"Text-only preview generated: {self.text_only_preview_image.size[0]}x{self.text_only_preview_image.size[1]}px "
                 f"({tape_width}mm tape)"
@@ -1676,9 +1681,9 @@ class LabelPrinterGUI(QMainWindow):
 
                 self.text_only_preview_image = create_text_only_label(
                     text=final_text,
-                    tape_width_mm=self.text_only_tape_width.currentData(),
-                    font_path=self.text_only_font_path_label.text(),
-                    font_size=self.text_only_font_size.value()
+                    tape_width_mm=self.tape_width,
+                    font_path=self.font_path,
+                    font_size=self.font_size
                 )
             except Exception as e:
                 QMessageBox.critical(
@@ -1693,7 +1698,7 @@ class LabelPrinterGUI(QMainWindow):
         reply = QMessageBox.question(
             self,
             "Confirm Print",
-            f"Print {copies} text-only label{'s' if copies > 1 else ''} on {self.text_only_tape_width.currentData()}mm tape?",
+            f"Print {copies} text-only label{'s' if copies > 1 else ''} on {self.tape_width}mm tape?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
 
@@ -1713,7 +1718,7 @@ class LabelPrinterGUI(QMainWindow):
                     instructions = convert(
                         qlr=qlr,
                         images=[temp_path],
-                        label=str(self.text_only_tape_width.currentData()),
+                        label=str(self.tape_width),
                         rotate=90,
                         threshold=70,
                         dither=False,
@@ -1816,48 +1821,6 @@ class LabelPrinterGUI(QMainWindow):
         template_layout.addStretch()
         settings_layout.addLayout(template_layout)
 
-        # Tape width and font size on one row
-        tape_font_layout = QHBoxLayout()
-
-        # Tape width
-        tape_font_layout.addWidget(QLabel("Tape Width:"))
-        self.batch_range_tape_width = QComboBox()
-        self.batch_range_tape_width.setToolTip("Width of the continuous label tape")
-        for width in sorted(TAPE_WIDTHS.keys()):
-            self.batch_range_tape_width.addItem(f"{width}mm", width)
-        # Set default to 29mm
-        index = self.batch_range_tape_width.findData(29)
-        if index >= 0:
-            self.batch_range_tape_width.setCurrentIndex(index)
-        tape_font_layout.addWidget(self.batch_range_tape_width)
-
-        tape_font_layout.addSpacing(20)
-
-        # Font size
-        tape_font_layout.addWidget(QLabel("Font Size:"))
-        self.batch_range_font_size = QSpinBox()
-        self.batch_range_font_size.setRange(40, 250)
-        self.batch_range_font_size.setValue(100)
-        self.batch_range_font_size.setSuffix("pt")
-        self.batch_range_font_size.setToolTip("Size of the label text (40-250pt)")
-        tape_font_layout.addWidget(self.batch_range_font_size)
-
-        tape_font_layout.addStretch()
-        settings_layout.addLayout(tape_font_layout)
-
-        # Font selection
-        font_select_layout = QHBoxLayout()
-        font_select_layout.addWidget(QLabel("Font:"))
-        self.batch_range_font_path_label = QLabel(DEFAULT_FONT)
-        self.batch_range_font_path_label.setStyleSheet("QLabel { color: gray; font-size: 10pt; }")
-        self.batch_range_font_path_label.setToolTip(DEFAULT_FONT)
-        font_select_layout.addWidget(self.batch_range_font_path_label, 1)
-        self.batch_range_font_button = QPushButton("Browse...")
-        self.batch_range_font_button.setToolTip("Select a custom TrueType font file")
-        self.batch_range_font_button.clicked.connect(self.select_batch_range_font)
-        font_select_layout.addWidget(self.batch_range_font_button)
-        settings_layout.addLayout(font_select_layout)
-
         settings_group.setLayout(settings_layout)
         layout.addWidget(settings_group)
 
@@ -1897,17 +1860,6 @@ class LabelPrinterGUI(QMainWindow):
         preview_group.setLayout(preview_layout)
         layout.addWidget(preview_group, 1)
 
-    def select_batch_range_font(self):
-        """Select font for batch range labels"""
-        font_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Select Font File",
-            "/usr/share/fonts/truetype/",
-            "TrueType Fonts (*.ttf);;All Files (*)"
-        )
-        if font_path:
-            self.batch_range_font_path_label.setText(font_path)
-
     def preview_batch_range(self):
         """Generate preview for batch range labels"""
         first_num = self.batch_range_first.value()
@@ -1937,9 +1889,9 @@ class LabelPrinterGUI(QMainWindow):
 
             prefix = self.batch_range_prefix_combo.currentData()
             template = self.batch_range_template.currentData()
-            tape_width = self.batch_range_tape_width.currentData()
-            font_path = self.batch_range_font_path_label.text()
-            font_size = self.batch_range_font_size.value()
+            tape_width = self.tape_width
+            font_path = self.font_path
+            font_size = self.font_size
 
             # Generate preview images
             preview_images = []
@@ -2031,9 +1983,9 @@ class LabelPrinterGUI(QMainWindow):
 
         try:
             template = self.batch_range_template.currentData()
-            tape_width = self.batch_range_tape_width.currentData()
-            font_path = self.batch_range_font_path_label.text()
-            font_size = self.batch_range_font_size.value()
+            tape_width = self.tape_width
+            font_path = self.font_path
+            font_size = self.font_size
 
             # Print each label
             for idx, num in enumerate(range(first_num, last_num + 1), 1):
@@ -2175,6 +2127,18 @@ class LabelPrinterGUI(QMainWindow):
                 "description": "Text on top, QR code below, centered vertically. Inverse of Template 2 - optimized for text-first readability.",
                 "function": create_label_image_template6,
                 "params": {"qr_data": "https://example.com", "text": "Box 1", "tape_width_mm": 29, "font_path": DEFAULT_FONT, "font_size": 100, "include_qr": True}
+            },
+            {
+                "name": "Template 7: Shelf Label",
+                "description": "Vertical text on left (e.g., 'SHELF'), large number on right. Use format 'SHELF 2' where text is the label and number is on right.",
+                "function": create_shelf_label,
+                "params": {"label_text": "SHELF", "number": "1", "tape_width_mm": 29, "font_path": DEFAULT_FONT}
+            },
+            {
+                "name": "Template 8: Storage QR Label",
+                "description": "QR code with storage type text below, large number on right. Optimized for larger labels. Use format 'BOX 2' where text is below QR and number is on right.",
+                "function": create_storage_qr_label,
+                "params": {"qr_data": "https://example.com", "storage_type": "BOX", "number": "1", "tape_width_mm": 62, "font_path": DEFAULT_FONT, "include_qr": True}
             }
         ]
 
