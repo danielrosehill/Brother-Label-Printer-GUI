@@ -1,3 +1,12 @@
+brother-label-printer (1.4.0) unstable; urgency=medium
+
+  * Version 1.4.0
+  * Added template selector to Text Only tab with horizontal and rotated 90° CCW options
+  * Renamed Template 5 to "Text Rotated 90° CCW" for clarity
+  * Rotated text template prints on long side with single-line text scaled to fit tape height
+
+ -- Daniel Rosehill <public@danielrosehill.com>  Tue, 24 Dec 2024 00:00:00 +0200
+
 brother-label-printer (1.3.0) unstable; urgency=medium
 
   * Version 1.3.0
