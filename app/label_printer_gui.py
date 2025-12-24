@@ -283,7 +283,7 @@ class LabelPrinterGUI(QMainWindow):
         self.template_combo.addItem("Template 2 (QR Above Text)", 2)
         self.template_combo.addItem("Template 3 (Rotated Text)", 3)
         self.template_combo.addItem("Template 4 (Text Only)", 4)
-        self.template_combo.addItem("Template 5 (Vertical Auto-fit)", 5)
+        self.template_combo.addItem("Template 5 (Text Rotated 90° CCW)", 5)
         self.template_combo.addItem("Template 6 (Text Above QR)", 6)
         self.template_combo.addItem("Template 7 (Shelf Label)", 7)
         self.template_combo.addItem("Template 8 (Storage QR Label)", 8)
@@ -360,7 +360,7 @@ class LabelPrinterGUI(QMainWindow):
         self.batch_template_combo.addItem("Template 2 (QR Above Text)", 2)
         self.batch_template_combo.addItem("Template 3 (Rotated Text)", 3)
         self.batch_template_combo.addItem("Template 4 (Text Only)", 4)
-        self.batch_template_combo.addItem("Template 5 (Vertical Auto-fit)", 5)
+        self.batch_template_combo.addItem("Template 5 (Text Rotated 90° CCW)", 5)
         self.batch_template_combo.addItem("Template 6 (Text Above QR)", 6)
         self.batch_template_combo.addItem("Template 7 (Shelf Label)", 7)
         self.batch_template_combo.addItem("Template 8 (Storage QR Label)", 8)
@@ -483,6 +483,20 @@ class LabelPrinterGUI(QMainWindow):
         prefix_layout.addWidget(self.text_only_prefix_combo)
         prefix_layout.addStretch()
         input_layout.addLayout(prefix_layout)
+
+        # Template selection
+        template_layout = QHBoxLayout()
+        template_label = QLabel("Template:")
+        template_label.setMinimumWidth(50)
+        template_layout.addWidget(template_label)
+        self.text_only_template_combo = QComboBox()
+        self.text_only_template_combo.addItem("Horizontal Text", "horizontal")
+        self.text_only_template_combo.addItem("Rotated 90° CCW (Long Side)", "vertical")
+        self.text_only_template_combo.setToolTip("Choose text orientation")
+        self.text_only_template_combo.currentIndexChanged.connect(self.on_text_only_input_changed)
+        template_layout.addWidget(self.text_only_template_combo)
+        template_layout.addStretch()
+        input_layout.addLayout(template_layout)
 
         # Label text input
         label_layout = QHBoxLayout()
@@ -1630,13 +1644,23 @@ class LabelPrinterGUI(QMainWindow):
             # Get final label text with prefix
             final_text = self.get_final_text_only_label_text()
 
-            # Generate image
-            self.text_only_preview_image = create_text_only_label(
-                text=final_text,
-                tape_width_mm=self.tape_width,
-                font_path=self.font_path,
-                font_size=self.font_size
-            )
+            # Get selected template
+            template = self.text_only_template_combo.currentData()
+
+            # Generate image based on template
+            if template == "vertical":
+                self.text_only_preview_image = create_vertical_text_label(
+                    text=final_text,
+                    tape_width_mm=self.tape_width,
+                    font_path=self.font_path
+                )
+            else:
+                self.text_only_preview_image = create_text_only_label(
+                    text=final_text,
+                    tape_width_mm=self.tape_width,
+                    font_path=self.font_path,
+                    font_size=self.font_size
+                )
 
             # Save to temp file and display
             temp_path = "/tmp/brother_ql_text_only_preview.png"
@@ -1679,12 +1703,23 @@ class LabelPrinterGUI(QMainWindow):
                 # Get final label text with prefix
                 final_text = self.get_final_text_only_label_text()
 
-                self.text_only_preview_image = create_text_only_label(
-                    text=final_text,
-                    tape_width_mm=self.tape_width,
-                    font_path=self.font_path,
-                    font_size=self.font_size
-                )
+                # Get selected template
+                template = self.text_only_template_combo.currentData()
+
+                # Generate image based on template
+                if template == "vertical":
+                    self.text_only_preview_image = create_vertical_text_label(
+                        text=final_text,
+                        tape_width_mm=self.tape_width,
+                        font_path=self.font_path
+                    )
+                else:
+                    self.text_only_preview_image = create_text_only_label(
+                        text=final_text,
+                        tape_width_mm=self.tape_width,
+                        font_path=self.font_path,
+                        font_size=self.font_size
+                    )
             except Exception as e:
                 QMessageBox.critical(
                     self,
@@ -2117,7 +2152,7 @@ class LabelPrinterGUI(QMainWindow):
                 "params": {"text": "Box 1", "tape_width_mm": 29, "font_path": DEFAULT_FONT, "font_size": 100}
             },
             {
-                "name": "Template 5: Vertical Auto-fit Text",
+                "name": "Template 5: Text Rotated 90° CCW",
                 "description": "Text rotated 90° counterclockwise and automatically scaled to fit the tape height. No QR code.",
                 "function": create_vertical_text_label,
                 "params": {"text": "Box 1", "tape_width_mm": 29, "font_path": DEFAULT_FONT}
@@ -2305,7 +2340,7 @@ class LabelPrinterGUI(QMainWindow):
         features_list = [
             "QR Code + Text labels for inventory tracking",
             "Text-only labels without QR codes",
-            "5 different label templates including vertical auto-fit for rotated text",
+            "5 different label templates including text rotated 90° for long-side printing",
             "Batch mode for printing up to 10 different labels",
             "Batch range mode for sequential numbered labels",
             "Live preview before printing",
