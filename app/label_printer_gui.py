@@ -37,34 +37,211 @@ def suppress_stderr():
         sys.stderr = original_stderr
 
 
-def discover_printers():
-    """Discover available Brother QL printers across all backends.
+def get_cups_printers():
+    """Get list of printers configured in CUPS.
 
-    Returns a list of tuples: (printer_identifier, backend, display_name)
+    Returns a list of tuples: (printer_name, status)
     """
+    import subprocess
     printers = []
 
-    # Try USB backends first (most common)
-    for backend in ['pyusb', 'linux_kernel']:
-        try:
-            with suppress_stderr():
-                found = discover(backend_identifier=backend)
-            for printer_id in found:
-                # Create a display name from the identifier
-                display_name = printer_id
-                if printer_id.startswith('usb://'):
-                    # Format: usb://0x04f9:0x2042/serial
-                    display_name = f"USB: {printer_id.split('/')[-1] or 'Brother QL'}"
-                elif printer_id.startswith('file://'):
-                    display_name = f"Device: {printer_id.replace('file://', '')}"
-                printers.append((printer_id, backend, display_name))
-        except Exception:
-            pass
-
-    # Network printers (if any configured - requires broadcast discovery)
-    # Note: network discovery typically requires explicit IP configuration
+    try:
+        # Get printer names and status
+        result = subprocess.run(
+            ['lpstat', '-p'],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            for line in result.stdout.strip().split('\n'):
+                if line.startswith('printer '):
+                    # Parse: "printer NAME is idle." or "printer NAME disabled..."
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        name = parts[1]
+                        status = 'idle' if 'idle' in line else 'disabled' if 'disabled' in line else 'unknown'
+                        printers.append((name, status))
+    except Exception:
+        pass
 
     return printers
+
+
+def get_printer_uri(printer_name):
+    """Get the device URI for a CUPS printer.
+
+    Returns the URI string or None if not found.
+    """
+    import subprocess
+    try:
+        result = subprocess.run(
+            ['lpstat', '-v', printer_name],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            # Parse: "device for PRINTER: URI"
+            line = result.stdout.strip()
+            if ': ' in line:
+                return line.split(': ', 1)[1]
+    except Exception:
+        pass
+    return None
+
+
+def print_label_image(image_path, printer_name, label_size, copies=1):
+    """Print a label image to a Brother QL printer.
+
+    Automatically detects if printer is local USB or network and routes accordingly.
+
+    Args:
+        image_path: Path to the image file to print
+        printer_name: CUPS printer name
+        label_size: Label width in mm (e.g., 62)
+        copies: Number of copies to print
+
+    Returns:
+        tuple: (success: bool, message: str)
+    """
+    import subprocess
+    import re
+
+    if not printer_name:
+        return False, "No printer selected. Please select a printer in Settings."
+
+    # Get printer URI to determine connection type
+    uri = get_printer_uri(printer_name)
+    if not uri:
+        return False, f"Could not find printer '{printer_name}'"
+
+    # Determine if local USB or network printer
+    if uri.startswith('usb://') or uri.startswith('file://'):
+        # Local USB printer - use brother_ql directly
+        return print_local_usb(image_path, label_size, copies)
+    elif 'ipp://' in uri or 'ipps://' in uri:
+        # Network printer - extract host and use SSH + brother_ql
+        # Parse host from URI like ipp://10.0.0.4:631/printers/QL-700
+        match = re.search(r'ipps?://([^:/]+)', uri)
+        if match:
+            host = match.group(1)
+            return print_via_ssh(image_path, host, label_size, copies)
+        else:
+            return False, f"Could not parse host from URI: {uri}"
+    else:
+        return False, f"Unsupported printer URI: {uri}"
+
+
+def print_local_usb(image_path, label_size, copies=1):
+    """Print to a locally connected USB Brother QL printer using brother_ql."""
+    from brother_ql.raster import BrotherQLRaster
+    from brother_ql.conversion import convert
+    from brother_ql.backends.helpers import send, discover
+
+    try:
+        # Discover local USB printers
+        with suppress_stderr():
+            printers = discover(backend_identifier='pyusb')
+
+        if not printers:
+            with suppress_stderr():
+                printers = discover(backend_identifier='linux_kernel')
+
+        if not printers:
+            return False, "No local USB Brother QL printer found"
+
+        printer_id = printers[0]
+        backend = 'pyusb' if printer_id.startswith('usb://') else 'linux_kernel'
+
+        # Print copies
+        for _ in range(copies):
+            qlr = BrotherQLRaster(PRINTER_MODEL)
+            instructions = convert(
+                qlr=qlr,
+                images=[image_path],
+                label=str(label_size),
+                rotate=90,
+                threshold=70,
+                dither=False,
+                compress=False,
+                red=False,
+                cut=True,
+            )
+            with suppress_stderr():
+                send(
+                    instructions=instructions,
+                    printer_identifier=printer_id,
+                    backend_identifier=backend,
+                    blocking=True
+                )
+
+        return True, f"Printed {copies} label(s) to local USB printer"
+
+    except Exception as e:
+        return False, f"Local print error: {str(e)}"
+
+
+def print_via_ssh(image_path, host, label_size, copies=1):
+    """Print to a remote Brother QL printer via SSH + brother_ql.
+
+    Args:
+        image_path: Local path to the image file
+        host: Remote host (e.g., '10.0.0.4' or 'ubuntuvm')
+        label_size: Label width in mm
+        copies: Number of copies
+
+    Returns:
+        tuple: (success: bool, message: str)
+    """
+    import subprocess
+    import os
+
+    # Map IP to hostname if known
+    host_map = {
+        '10.0.0.4': 'ubuntuvm',
+        'ubuntuvm.local': 'ubuntuvm',
+    }
+    ssh_host = host_map.get(host, host)
+
+    remote_path = f"/tmp/brother_ql_print_{os.getpid()}.png"
+
+    try:
+        # Copy image to remote host
+        scp_result = subprocess.run(
+            ['scp', '-q', image_path, f'{ssh_host}:{remote_path}'],
+            capture_output=True, text=True, timeout=30
+        )
+        if scp_result.returncode != 0:
+            return False, f"Failed to copy image to {ssh_host}: {scp_result.stderr}"
+
+        # Reload usblp module and print via brother_ql
+        # Using sudo for module reload and printer access
+        ssh_cmd = (
+            f"sudo modprobe -r usblp 2>/dev/null; "
+            f"sudo modprobe usblp; "
+            f"sleep 0.5; "
+            f"for i in $(seq 1 {copies}); do "
+            f"sudo ~/.local/bin/brother_ql -b linux_kernel -m QL-700 "
+            f"-p file:///dev/usb/lp0 print -l {label_size} {remote_path} 2>&1; "
+            f"done; "
+            f"rm -f {remote_path}"
+        )
+
+        result = subprocess.run(
+            ['ssh', ssh_host, ssh_cmd],
+            capture_output=True, text=True, timeout=60
+        )
+
+        # Check for success indicators in output
+        output = result.stdout + result.stderr
+        if 'Printing was successful' in output or 'Sending instructions' in output:
+            return True, f"Printed {copies} label(s) to {ssh_host}"
+        elif result.returncode == 0:
+            return True, f"Print job sent to {ssh_host}"
+        else:
+            return False, f"Print may have failed: {output[:200]}"
+
+    except subprocess.TimeoutExpired:
+        return False, f"SSH print to {ssh_host} timed out"
+    except Exception as e:
+        return False, f"SSH print error: {str(e)}"
 
 # Import constants from print_label.py
 from print_label import (
@@ -80,7 +257,7 @@ class SettingsDialog(QDialog):
     """Dialog for printer settings (printer selection, paper size, font)"""
 
     def __init__(self, parent, tape_width, font_size, font_path,
-                 printer_identifier=None, backend=None):
+                 printer_name=None):
         super().__init__(parent)
         self.setWindowTitle("Printer Settings")
         self.setModal(True)
@@ -88,8 +265,7 @@ class SettingsDialog(QDialog):
 
         # Store current values
         self.font_path = font_path
-        self.printer_identifier = printer_identifier or DEFAULT_PRINTER
-        self.backend = backend or DEFAULT_BACKEND
+        self.printer_name = printer_name or ""
 
         layout = QVBoxLayout(self)
         form_layout = QFormLayout()
@@ -100,7 +276,7 @@ class SettingsDialog(QDialog):
         self.printer_combo.setMinimumWidth(250)
         printer_layout.addWidget(self.printer_combo, 1)
         refresh_btn = QPushButton("Refresh")
-        refresh_btn.setToolTip("Scan for connected printers")
+        refresh_btn.setToolTip("Refresh list of system printers")
         refresh_btn.clicked.connect(self.refresh_printers)
         printer_layout.addWidget(refresh_btn)
         form_layout.addRow("Printer:", printer_layout)
@@ -145,24 +321,22 @@ class SettingsDialog(QDialog):
         layout.addWidget(button_box)
 
     def refresh_printers(self):
-        """Refresh the list of available printers"""
+        """Refresh the list of available printers from CUPS"""
         self.printer_combo.clear()
 
-        # Add default/manual option first
-        self.printer_combo.addItem(
-            f"Default ({DEFAULT_PRINTER})",
-            (DEFAULT_PRINTER, DEFAULT_BACKEND)
-        )
+        # Get CUPS printers
+        printers = get_cups_printers()
 
-        # Discover connected printers
-        printers = discover_printers()
-        for printer_id, backend, display_name in printers:
-            self.printer_combo.addItem(display_name, (printer_id, backend))
+        if not printers:
+            self.printer_combo.addItem("No printers found", "")
+        else:
+            for name, status in printers:
+                display = f"{name} ({status})"
+                self.printer_combo.addItem(display, name)
 
         # Select the currently configured printer
         for i in range(self.printer_combo.count()):
-            data = self.printer_combo.itemData(i)
-            if data and data[0] == self.printer_identifier:
+            if self.printer_combo.itemData(i) == self.printer_name:
                 self.printer_combo.setCurrentIndex(i)
                 break
 
@@ -180,13 +354,11 @@ class SettingsDialog(QDialog):
 
     def get_values(self):
         """Return the current settings values"""
-        printer_data = self.printer_combo.currentData()
         return {
             'tape_width': self.tape_width_combo.currentData(),
             'font_size': self.font_size_spin.value(),
             'font_path': self.font_path,
-            'printer_identifier': printer_data[0] if printer_data else DEFAULT_PRINTER,
-            'backend': printer_data[1] if printer_data else DEFAULT_BACKEND,
+            'printer_name': self.printer_combo.currentData() or "",
         }
 
 
@@ -205,8 +377,7 @@ class LabelPrinterGUI(QMainWindow):
         self.tape_width = 62  # Default, will be overwritten by load_settings
         self.font_size = 100
         self.font_path = DEFAULT_FONT
-        self.printer_identifier = DEFAULT_PRINTER
-        self.backend = DEFAULT_BACKEND
+        self.printer_name = ""  # CUPS printer name
         self.init_ui()
         self.load_settings()
         self.setup_shortcuts()
@@ -667,8 +838,7 @@ class LabelPrinterGUI(QMainWindow):
         self.tape_width = self.settings.value("tape_width", 62, type=int)
         self.font_size = self.settings.value("font_size", 100, type=int)
         self.font_path = self.settings.value("font_path", DEFAULT_FONT)
-        self.printer_identifier = self.settings.value("printer_identifier", DEFAULT_PRINTER)
-        self.backend = self.settings.value("backend", DEFAULT_BACKEND)
+        self.printer_name = self.settings.value("printer_name", "")
 
         # Prefix (QR+Text tab)
         prefix = self.settings.value("prefix", "")
@@ -696,8 +866,7 @@ class LabelPrinterGUI(QMainWindow):
         self.settings.setValue("tape_width", self.tape_width)
         self.settings.setValue("font_size", self.font_size)
         self.settings.setValue("font_path", self.font_path)
-        self.settings.setValue("printer_identifier", self.printer_identifier)
-        self.settings.setValue("backend", self.backend)
+        self.settings.setValue("printer_name", self.printer_name)
         self.settings.setValue("prefix", self.prefix_combo.currentData())
         self.settings.setValue("text_only_prefix", self.text_only_prefix_combo.currentData())
         self.settings.setValue("batch_prefix", self.batch_prefix_combo.currentData())
@@ -707,18 +876,18 @@ class LabelPrinterGUI(QMainWindow):
         """Open the printer settings dialog"""
         dialog = SettingsDialog(
             self, self.tape_width, self.font_size, self.font_path,
-            self.printer_identifier, self.backend
+            self.printer_name
         )
         if dialog.exec() == QDialog.DialogCode.Accepted:
             values = dialog.get_values()
             self.tape_width = values['tape_width']
             self.font_size = values['font_size']
             self.font_path = values['font_path']
-            self.printer_identifier = values['printer_identifier']
-            self.backend = values['backend']
+            self.printer_name = values['printer_name']
             self.save_settings()
+            printer_msg = f", printer: {self.printer_name}" if self.printer_name else ""
             self.statusBar().showMessage(
-                f"Settings updated: {self.tape_width}mm tape, {self.font_size}pt font", 3000
+                f"Settings updated: {self.tape_width}mm tape, {self.font_size}pt font{printer_msg}", 3000
             )
 
     def generate_preview(self):
@@ -999,51 +1168,27 @@ class LabelPrinterGUI(QMainWindow):
         )
 
         if reply == QMessageBox.StandardButton.Yes:
-            try:
-                # Save to temp file
-                temp_path = "/tmp/brother_ql_print.png"
-                self.preview_image.save(temp_path)
+            # Save to temp file
+            temp_path = "/tmp/brother_ql_print.png"
+            self.preview_image.save(temp_path)
 
-                # Print multiple copies
-                for copy_num in range(copies):
-                    self.statusBar().showMessage(f"Printing copy {copy_num + 1} of {copies}...")
+            self.statusBar().showMessage(f"Sending {copies} label(s) to printer...")
 
-                    # Create raster instructions
-                    qlr = BrotherQLRaster(PRINTER_MODEL)
+            # Print label (auto-detects local USB vs network printer)
+            success, message = print_label_image(temp_path, self.printer_name, self.tape_width, copies)
 
-                    instructions = convert(
-                        qlr=qlr,
-                        images=[temp_path],
-                        label=str(self.tape_width),
-                        rotate=90,
-                        threshold=70,
-                        dither=False,
-                        compress=False,
-                        red=False,
-                        cut=True,
-                    )
-
-                    # Send to printer (suppress stderr to hide "operating mode" warning)
-                    with suppress_stderr():
-                        send(
-                            instructions=instructions,
-                            printer_identifier=self.printer_identifier,
-                            backend_identifier=self.backend,
-                            blocking=True
-                        )
-
-                self.statusBar().showMessage(f"Print complete! {copies} label{'s' if copies > 1 else ''} printed.")
+            if success:
+                self.statusBar().showMessage(f"Print complete! {copies} label{'s' if copies > 1 else ''} sent.")
                 QMessageBox.information(
                     self,
                     "Success",
-                    f"{copies} label{'s' if copies > 1 else ''} printed successfully!"
+                    f"{copies} label{'s' if copies > 1 else ''} sent to {self.printer_name}!"
                 )
-
-            except Exception as e:
+            else:
                 QMessageBox.critical(
                     self,
                     "Print Error",
-                    f"Failed to print label:\n{str(e)}"
+                    message
                 )
                 self.statusBar().showMessage("Print failed")
 
@@ -1611,38 +1756,18 @@ class LabelPrinterGUI(QMainWindow):
                 temp_path = "/tmp/brother_ql_batch_print.png"
                 img.save(temp_path)
 
-                # Print copies
-                for copy_num in range(copies):
-                    # Create raster instructions
-                    qlr = BrotherQLRaster(PRINTER_MODEL)
+                # Print label (auto-detects local USB vs network printer)
+                success, message = print_label_image(temp_path, self.printer_name, tape_width, copies)
+                if success:
+                    printed_count += copies
+                else:
+                    raise Exception(message)
 
-                    instructions = convert(
-                        qlr=qlr,
-                        images=[temp_path],
-                        label=str(tape_width),
-                        rotate=90,
-                        threshold=70,
-                        dither=False,
-                        compress=False,
-                        red=False,
-                        cut=True,
-                    )
-
-                    # Send to printer (suppress stderr to hide "operating mode" warning)
-                    with suppress_stderr():
-                        send(
-                            instructions=instructions,
-                            printer_identifier=self.printer_identifier,
-                            backend_identifier=self.backend,
-                            blocking=True
-                        )
-                    printed_count += 1
-
-            self.statusBar().showMessage(f"Batch print complete! {printed_count} labels printed.")
+            self.statusBar().showMessage(f"Batch print complete! {printed_count} labels sent.")
             QMessageBox.information(
                 self,
                 "Success",
-                f"Batch printed successfully!\n{len(labels)} designs, {printed_count} total labels."
+                f"Batch sent to {self.printer_name}!\n{len(labels)} designs, {printed_count} total labels."
             )
 
         except Exception as e:
@@ -1823,51 +1948,27 @@ class LabelPrinterGUI(QMainWindow):
         )
 
         if reply == QMessageBox.StandardButton.Yes:
-            try:
-                # Save to temp file
-                temp_path = "/tmp/brother_ql_text_only_print.png"
-                self.text_only_preview_image.save(temp_path)
+            # Save to temp file
+            temp_path = "/tmp/brother_ql_text_only_print.png"
+            self.text_only_preview_image.save(temp_path)
 
-                # Print multiple copies
-                for copy_num in range(copies):
-                    self.statusBar().showMessage(f"Printing copy {copy_num + 1} of {copies}...")
+            self.statusBar().showMessage(f"Sending {copies} label(s) to printer...")
 
-                    # Create raster instructions
-                    qlr = BrotherQLRaster(PRINTER_MODEL)
+            # Print label (auto-detects local USB vs network printer)
+            success, message = print_label_image(temp_path, self.printer_name, self.tape_width, copies)
 
-                    instructions = convert(
-                        qlr=qlr,
-                        images=[temp_path],
-                        label=str(self.tape_width),
-                        rotate=90,
-                        threshold=70,
-                        dither=False,
-                        compress=False,
-                        red=False,
-                        cut=True,
-                    )
-
-                    # Send to printer (suppress stderr to hide "operating mode" warning)
-                    with suppress_stderr():
-                        send(
-                            instructions=instructions,
-                            printer_identifier=self.printer_identifier,
-                            backend_identifier=self.backend,
-                            blocking=True
-                        )
-
-                self.statusBar().showMessage(f"Print complete! {copies} label{'s' if copies > 1 else ''} printed.")
+            if success:
+                self.statusBar().showMessage(f"Print complete! {copies} label{'s' if copies > 1 else ''} sent.")
                 QMessageBox.information(
                     self,
                     "Success",
-                    f"{copies} text-only label{'s' if copies > 1 else ''} printed successfully!"
+                    f"{copies} text-only label{'s' if copies > 1 else ''} sent to {self.printer_name}!"
                 )
-
-            except Exception as e:
+            else:
                 QMessageBox.critical(
                     self,
                     "Print Error",
-                    f"Failed to print label:\n{str(e)}"
+                    message
                 )
                 self.statusBar().showMessage("Print failed")
 
@@ -2140,35 +2241,16 @@ class LabelPrinterGUI(QMainWindow):
                 temp_path = "/tmp/brother_ql_batch_range_print.png"
                 img.save(temp_path)
 
-                # Create raster instructions
-                qlr = BrotherQLRaster(PRINTER_MODEL)
+                # Print label (auto-detects local USB vs network printer)
+                success, message = print_label_image(temp_path, self.printer_name, tape_width, 1)
+                if not success:
+                    raise Exception(message)
 
-                instructions = convert(
-                    qlr=qlr,
-                    images=[temp_path],
-                    label=str(tape_width),
-                    rotate=90,
-                    threshold=70,
-                    dither=False,
-                    compress=False,
-                    red=False,
-                    cut=True,
-                )
-
-                # Send to printer (suppress stderr to hide "operating mode" warning)
-                with suppress_stderr():
-                    send(
-                        instructions=instructions,
-                        printer_identifier=self.printer_identifier,
-                        backend_identifier=self.backend,
-                        blocking=True
-                    )
-
-            self.statusBar().showMessage(f"Batch range print complete! {label_count} labels printed.")
+            self.statusBar().showMessage(f"Batch range print complete! {label_count} labels sent.")
             QMessageBox.information(
                 self,
                 "Success",
-                f"Batch range printed successfully!\n{label_count} labels printed."
+                f"Batch range sent to {self.printer_name}!\n{label_count} labels."
             )
 
         except Exception as e:
