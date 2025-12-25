@@ -557,11 +557,24 @@ def create_vertical_text_label(text: str, tape_width_mm: int = 29,
                         f"Supported: {list(TAPE_WIDTHS.keys())}")
 
     label_height_px = TAPE_WIDTHS[tape_width_mm]
-    padding = 20
+
+    # Margins and padding configuration - proportional to tape size
+    # Use percentage-based margins to adapt to different tape widths (29mm-62mm)
+    # outer_margin_pct: percentage of label height reserved for margins on each side
+    outer_margin_pct = 0.05  # 5% margin on each side (10% total)
+    outer_margin = max(15, int(label_height_px * outer_margin_pct))  # At least 15px
+
+    # Internal padding added to text image before rotation (prevents clipping)
+    text_img_padding_pct = 0.03  # ~3% padding
+    text_img_padding = max(10, int(label_height_px * text_img_padding_pct))  # At least 10px
+    border_width = 2
 
     # Start with a large font size and scale down to fit
     # The text needs to fit vertically when rotated
-    target_height = label_height_px - (padding * 2)
+    # After rotation, text_width becomes height, so we need:
+    # text_width + (text_img_padding * 2) <= label_height_px - (outer_margin * 2)
+    # This ensures the rotated text image fits within the label with margins
+    target_height = label_height_px - (outer_margin * 2) - (text_img_padding * 2)
 
     # Binary search for optimal font size
     min_font_size = 20
@@ -593,28 +606,30 @@ def create_vertical_text_label(text: str, tape_width_mm: int = 29,
     text_width = bbox[2] - bbox[0]
     text_height = bbox[3] - bbox[1]
 
-    # Create temporary image for text
-    text_img = Image.new("RGB", (text_width + 40, text_height + 40), (255, 255, 255))
+    # Create temporary image for text with internal padding
+    text_img = Image.new("RGB", (text_width + text_img_padding * 2,
+                                  text_height + text_img_padding * 2), (255, 255, 255))
     text_draw = ImageDraw.Draw(text_img)
-    text_draw.text((20, 20), text, font=font, fill="black")
+    text_draw.text((text_img_padding, text_img_padding), text, font=font, fill="black")
 
     # Rotate text 90° counterclockwise
     text_img_rotated = text_img.rotate(90, expand=True)
 
     # Calculate final image dimensions
-    img_width = text_img_rotated.width + (padding * 2)
+    # Add outer margin on left/right (which affects label length)
+    img_width = text_img_rotated.width + (outer_margin * 2)
     img_height = label_height_px
 
     # Create final image
     img = Image.new("RGB", (img_width, img_height), (255, 255, 255))
 
     # Paste rotated text (centered)
+    # The rotated image should now fit within label_height with outer_margin clearance
     text_x = (img_width - text_img_rotated.width) // 2
     text_y = (img_height - text_img_rotated.height) // 2
     img.paste(text_img_rotated, (text_x, text_y))
 
     # Add subtle border
-    border_width = 2
     border_color = (200, 200, 200)
     draw = ImageDraw.Draw(img)
     draw.rectangle(
