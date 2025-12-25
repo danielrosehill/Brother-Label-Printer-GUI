@@ -2420,7 +2420,7 @@ class LabelPrinterGUI(QMainWindow):
         content_layout.addWidget(title)
 
         # Version
-        version = QLabel("Version 1.3.0")
+        version = QLabel("Version 1.6.0")
         version.setFont(QFont("Sans", 10))
         version.setAlignment(Qt.AlignmentFlag.AlignCenter)
         version.setStyleSheet("color: gray;")

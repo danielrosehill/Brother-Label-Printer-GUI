@@ -1,3 +1,12 @@
+brother-label-printer (1.6.0) unstable; urgency=medium
+
+  * Version 1.6.0: Label Sizing Fix
+  * Fixed Template 5 (rotated text) to properly fit text within label boundaries
+  * Text margins now scale proportionally with tape size (29mm, 38mm, 50mm, 62mm)
+  * Ensures consistent 84-85% usable space across all tape widths
+
+ -- Daniel Rosehill <public@danielrosehill.com>  Wed, 25 Dec 2025 14:00:00 +0200
+
 brother-label-printer (1.5.0) unstable; urgency=medium
 
   * Version 1.5.0: Printer Selection

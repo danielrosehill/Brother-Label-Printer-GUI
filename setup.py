@@ -5,7 +5,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="brother-label-printer",
-    version="1.5.0",
+    version="1.6.0",
     description="Label printer GUI for Brother QL-700",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
