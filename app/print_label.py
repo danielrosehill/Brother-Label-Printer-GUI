@@ -258,11 +258,11 @@ def create_label_image_template2(qr_data: str, text: str, tape_width_mm: int = 2
     padding = int(15 * scale)
     text_gap = int(30 * scale)
 
-    # QR code generation - maximize size for scannability
+    # QR code generation - size balanced for QR readability and text visibility
     qr_img = None
     qr_size = 0
     if include_qr:
-        qr_size = int(label_height_px * 0.85)  # Larger QR code for better scanning
+        qr_size = int(label_height_px * 0.65)  # 65% for QR to leave room for text below
         qr = qrcode.QRCode(
             version=1,
             error_correction=qrcode.constants.ERROR_CORRECT_M,
@@ -609,12 +609,12 @@ def create_vertical_text_label(text: str, tape_width_mm: int = 29,
     # Margins and padding configuration - proportional to tape size
     # Use percentage-based margins to adapt to different tape widths (29mm-62mm)
     # outer_margin_pct: percentage of label height reserved for margins on each side
-    outer_margin_pct = 0.05  # 5% margin on each side (10% total)
-    outer_margin = max(int(15 * scale), int(label_height_px * outer_margin_pct))
+    outer_margin_pct = 0.12  # 12% margin on each side for comfortable spacing
+    outer_margin = max(int(25 * scale), int(label_height_px * outer_margin_pct))
 
     # Internal padding added to text image before rotation (prevents clipping)
-    text_img_padding_pct = 0.03  # ~3% padding
-    text_img_padding = max(int(10 * scale), int(label_height_px * text_img_padding_pct))
+    text_img_padding_pct = 0.05  # ~5% padding
+    text_img_padding = max(int(15 * scale), int(label_height_px * text_img_padding_pct))
     border_width = max(2, int(2 * scale))
 
     # Start with a large font size and scale down to fit
@@ -722,11 +722,11 @@ def create_label_image_template6(qr_data: str, text: str, tape_width_mm: int = 2
     padding = int(15 * scale)
     text_gap = int(30 * scale)
 
-    # QR code generation - maximize size for scannability
+    # QR code generation - size balanced for QR readability and text visibility
     qr_img = None
     qr_size = 0
     if include_qr:
-        qr_size = int(label_height_px * 0.85)  # Large QR code for better scanning
+        qr_size = int(label_height_px * 0.65)  # 65% for QR to leave room for text above
         qr = qrcode.QRCode(
             version=1,
             error_correction=qrcode.constants.ERROR_CORRECT_M,
