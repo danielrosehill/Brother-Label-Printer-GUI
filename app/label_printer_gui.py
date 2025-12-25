@@ -22,7 +22,7 @@ from PIL import Image, ImageDraw, ImageFont
 import qrcode
 from brother_ql.raster import BrotherQLRaster
 from brother_ql.conversion import convert
-from brother_ql.backends.helpers import send
+from brother_ql.backends.helpers import send, discover
 
 
 @contextmanager
@@ -36,6 +36,36 @@ def suppress_stderr():
         sys.stderr.close()
         sys.stderr = original_stderr
 
+
+def discover_printers():
+    """Discover available Brother QL printers across all backends.
+
+    Returns a list of tuples: (printer_identifier, backend, display_name)
+    """
+    printers = []
+
+    # Try USB backends first (most common)
+    for backend in ['pyusb', 'linux_kernel']:
+        try:
+            with suppress_stderr():
+                found = discover(backend_identifier=backend)
+            for printer_id in found:
+                # Create a display name from the identifier
+                display_name = printer_id
+                if printer_id.startswith('usb://'):
+                    # Format: usb://0x04f9:0x2042/serial
+                    display_name = f"USB: {printer_id.split('/')[-1] or 'Brother QL'}"
+                elif printer_id.startswith('file://'):
+                    display_name = f"Device: {printer_id.replace('file://', '')}"
+                printers.append((printer_id, backend, display_name))
+        except Exception:
+            pass
+
+    # Network printers (if any configured - requires broadcast discovery)
+    # Note: network discovery typically requires explicit IP configuration
+
+    return printers
+
 # Import constants from print_label.py
 from print_label import (
     TAPE_WIDTHS, PRINTER_MODEL, DEFAULT_PRINTER, DEFAULT_BACKEND,
@@ -47,16 +77,36 @@ from print_label import (
 
 
 class SettingsDialog(QDialog):
-    """Dialog for printer settings (paper size, font)"""
+    """Dialog for printer settings (printer selection, paper size, font)"""
 
-    def __init__(self, parent, tape_width, font_size, font_path):
+    def __init__(self, parent, tape_width, font_size, font_path,
+                 printer_identifier=None, backend=None):
         super().__init__(parent)
         self.setWindowTitle("Printer Settings")
         self.setModal(True)
-        self.setMinimumWidth(350)
+        self.setMinimumWidth(400)
+
+        # Store current values
+        self.font_path = font_path
+        self.printer_identifier = printer_identifier or DEFAULT_PRINTER
+        self.backend = backend or DEFAULT_BACKEND
 
         layout = QVBoxLayout(self)
         form_layout = QFormLayout()
+
+        # Printer selection with refresh button
+        printer_layout = QHBoxLayout()
+        self.printer_combo = QComboBox()
+        self.printer_combo.setMinimumWidth(250)
+        printer_layout.addWidget(self.printer_combo, 1)
+        refresh_btn = QPushButton("Refresh")
+        refresh_btn.setToolTip("Scan for connected printers")
+        refresh_btn.clicked.connect(self.refresh_printers)
+        printer_layout.addWidget(refresh_btn)
+        form_layout.addRow("Printer:", printer_layout)
+
+        # Populate printer list
+        self.refresh_printers()
 
         # Paper size dropdown
         self.tape_width_combo = QComboBox()
@@ -78,7 +128,6 @@ class SettingsDialog(QDialog):
         font_layout = QHBoxLayout()
         self.font_path_label = QLabel(os.path.basename(font_path))
         self.font_path_label.setToolTip(font_path)
-        self.font_path = font_path
         font_layout.addWidget(self.font_path_label, 1)
         browse_btn = QPushButton("Browse...")
         browse_btn.clicked.connect(self.browse_font)
@@ -95,6 +144,28 @@ class SettingsDialog(QDialog):
         button_box.rejected.connect(self.reject)
         layout.addWidget(button_box)
 
+    def refresh_printers(self):
+        """Refresh the list of available printers"""
+        self.printer_combo.clear()
+
+        # Add default/manual option first
+        self.printer_combo.addItem(
+            f"Default ({DEFAULT_PRINTER})",
+            (DEFAULT_PRINTER, DEFAULT_BACKEND)
+        )
+
+        # Discover connected printers
+        printers = discover_printers()
+        for printer_id, backend, display_name in printers:
+            self.printer_combo.addItem(display_name, (printer_id, backend))
+
+        # Select the currently configured printer
+        for i in range(self.printer_combo.count()):
+            data = self.printer_combo.itemData(i)
+            if data and data[0] == self.printer_identifier:
+                self.printer_combo.setCurrentIndex(i)
+                break
+
     def browse_font(self):
         font_path, _ = QFileDialog.getOpenFileName(
             self,
@@ -109,10 +180,13 @@ class SettingsDialog(QDialog):
 
     def get_values(self):
         """Return the current settings values"""
+        printer_data = self.printer_combo.currentData()
         return {
-            'tape_width': self.tape_width,
-            'font_size': self.font_size,
-            'font_path': self.font_path
+            'tape_width': self.tape_width_combo.currentData(),
+            'font_size': self.font_size_spin.value(),
+            'font_path': self.font_path,
+            'printer_identifier': printer_data[0] if printer_data else DEFAULT_PRINTER,
+            'backend': printer_data[1] if printer_data else DEFAULT_BACKEND,
         }
 
 
@@ -131,6 +205,8 @@ class LabelPrinterGUI(QMainWindow):
         self.tape_width = 62  # Default, will be overwritten by load_settings
         self.font_size = 100
         self.font_path = DEFAULT_FONT
+        self.printer_identifier = DEFAULT_PRINTER
+        self.backend = DEFAULT_BACKEND
         self.init_ui()
         self.load_settings()
         self.setup_shortcuts()
@@ -587,10 +663,12 @@ class LabelPrinterGUI(QMainWindow):
 
     def load_settings(self):
         """Load persistent settings"""
-        # Printer settings (tape width, font size, font path)
+        # Printer settings (tape width, font size, font path, printer)
         self.tape_width = self.settings.value("tape_width", 62, type=int)
         self.font_size = self.settings.value("font_size", 100, type=int)
         self.font_path = self.settings.value("font_path", DEFAULT_FONT)
+        self.printer_identifier = self.settings.value("printer_identifier", DEFAULT_PRINTER)
+        self.backend = self.settings.value("backend", DEFAULT_BACKEND)
 
         # Prefix (QR+Text tab)
         prefix = self.settings.value("prefix", "")
@@ -618,6 +696,8 @@ class LabelPrinterGUI(QMainWindow):
         self.settings.setValue("tape_width", self.tape_width)
         self.settings.setValue("font_size", self.font_size)
         self.settings.setValue("font_path", self.font_path)
+        self.settings.setValue("printer_identifier", self.printer_identifier)
+        self.settings.setValue("backend", self.backend)
         self.settings.setValue("prefix", self.prefix_combo.currentData())
         self.settings.setValue("text_only_prefix", self.text_only_prefix_combo.currentData())
         self.settings.setValue("batch_prefix", self.batch_prefix_combo.currentData())
@@ -625,12 +705,17 @@ class LabelPrinterGUI(QMainWindow):
 
     def open_settings(self):
         """Open the printer settings dialog"""
-        dialog = SettingsDialog(self, self.tape_width, self.font_size, self.font_path)
+        dialog = SettingsDialog(
+            self, self.tape_width, self.font_size, self.font_path,
+            self.printer_identifier, self.backend
+        )
         if dialog.exec() == QDialog.DialogCode.Accepted:
             values = dialog.get_values()
             self.tape_width = values['tape_width']
             self.font_size = values['font_size']
             self.font_path = values['font_path']
+            self.printer_identifier = values['printer_identifier']
+            self.backend = values['backend']
             self.save_settings()
             self.statusBar().showMessage(
                 f"Settings updated: {self.tape_width}mm tape, {self.font_size}pt font", 3000
@@ -942,8 +1027,8 @@ class LabelPrinterGUI(QMainWindow):
                     with suppress_stderr():
                         send(
                             instructions=instructions,
-                            printer_identifier=DEFAULT_PRINTER,
-                            backend_identifier=DEFAULT_BACKEND,
+                            printer_identifier=self.printer_identifier,
+                            backend_identifier=self.backend,
                             blocking=True
                         )
 
@@ -1547,8 +1632,8 @@ class LabelPrinterGUI(QMainWindow):
                     with suppress_stderr():
                         send(
                             instructions=instructions,
-                            printer_identifier=DEFAULT_PRINTER,
-                            backend_identifier=DEFAULT_BACKEND,
+                            printer_identifier=self.printer_identifier,
+                            backend_identifier=self.backend,
                             blocking=True
                         )
                     printed_count += 1
@@ -1766,8 +1851,8 @@ class LabelPrinterGUI(QMainWindow):
                     with suppress_stderr():
                         send(
                             instructions=instructions,
-                            printer_identifier=DEFAULT_PRINTER,
-                            backend_identifier=DEFAULT_BACKEND,
+                            printer_identifier=self.printer_identifier,
+                            backend_identifier=self.backend,
                             blocking=True
                         )
 
@@ -2074,8 +2159,8 @@ class LabelPrinterGUI(QMainWindow):
                 with suppress_stderr():
                     send(
                         instructions=instructions,
-                        printer_identifier=DEFAULT_PRINTER,
-                        backend_identifier=DEFAULT_BACKEND,
+                        printer_identifier=self.printer_identifier,
+                        backend_identifier=self.backend,
                         blocking=True
                     )
 
