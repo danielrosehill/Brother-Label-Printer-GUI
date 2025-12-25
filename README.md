@@ -1,190 +1,200 @@
-# Brother QL-700 Label Printer
+# Brother QL Label Printer for Inventory Management
 
-A basic label printing utility for the Brother QL-700 label printer, optimized for inventory applications. Built with CLI foundation and PyQt6 GUI interface.
+A desktop label printing application for Brother QL-700 label printers, designed specifically for **inventory management** workflows. Print professional labels for boxes, shelves, containers, and assets with QR codes for tracking.
 
-**Validated on:** Ubuntu 25.10 with Brother QL-700
+Built with PyQt6 for a native desktop experience on Linux.
+
+**Tested on:** Ubuntu 25.10 with Brother QL-700
 **Note:** Not validated with other Brother QL models - use at your own risk with other printers.
+
+---
+
+## Why This Tool?
+
+Managing inventory - whether for home storage, small business, or warehouse operations - requires consistent, scannable labels. This tool provides:
+
+- **Quick label generation** with common prefixes (Box, Shelf, Container, Asset)
+- **QR codes** that link to your inventory database or tracking URLs
+- **Batch printing** for labeling multiple items efficiently
+- **Consistent formatting** across all your inventory labels
+- **Persistent settings** so you can pick up where you left off
+
+---
 
 ## Features
 
-Three printing modes for flexible inventory labeling:
+### Printing Modes
 
-- **QR Code + Text Mode**: Labels with QR codes and text for inventory tracking
-- **Text-Only Mode**: Simple centered text labels without QR codes
-- **Batch Mode**: Print up to 10 different labels in one session with individual copy counts
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| **QR + Text** | Labels with scannable QR code and large text | Track items with URL/database links |
+| **Text Only** | Simple centered text labels | Shelf labels, category markers |
+| **Batch Mode** | Print up to 10 different labels at once | Initial inventory setup |
+| **Batch Range** | Auto-generate numbered sequences | "Box 1" through "Box 50" |
 
-Additional features:
-- **Label prefixes**: Select from common prefixes (Box, Container, Shelf, Asset) or use none
-- Support for multiple tape widths: **29mm, 38mm, 50mm, 62mm**
-- **Live preview** before printing
-- **Keyboard shortcuts** for faster workflow (Enter to preview, Ctrl+P to print, Ctrl+R to reset)
-- **Auto-increment** label numbers (Box 1 → Box 2 → Box 3)
-- Customizable fonts and font sizes (40-250pt)
-- Persistent settings across sessions
-- **Easy Debian packaging** for system-wide installation
+### Label Templates (8 styles)
+
+1. **Horizontal QR + Text** - QR left, text right (default)
+2. **QR Above Text** - Vertical layout, QR on top
+3. **Rotated Layout** - Text rotated for vertical reading
+4. **Text Only Centered** - No QR, text fills label
+5. **Text Rotated 90° CCW** - Vertical text orientation
+6. **Text Above QR** - Inverse of template 2
+7. **Shelf Label** - Optimized for shelf edge labels
+8. **Storage QR Label** - Storage type + numbered identifier
+
+### Additional Features
+
+- **Printer Selection** - Choose from multiple connected Brother QL printers
+- **Label Prefixes** - Box, Container, Shelf, Asset, or custom text
+- **Multiple Tape Widths** - 29mm, 38mm, 50mm, 62mm support
+- **Live Preview** - See your label before printing
+- **Auto-increment** - Box 1 → Box 2 → Box 3 with one click
+- **Keyboard Shortcuts** - Enter (preview), Ctrl+P (print), Ctrl+R (reset)
+- **Customizable Fonts** - 40-250pt, any TrueType font
+- **Persistent Settings** - Printer, tape width, font, and prefix selections saved
+
+---
 
 ## Screenshots
 
 ### Main Interface (QR + Text Mode)
 ![Main Interface](screenshots/main-interface.png)
-*The primary interface for creating labels with QR codes and text. Select a prefix, enter URL and label details, then preview and print.*
+*Create labels with QR codes and text. Select a prefix, enter URL and label details.*
 
 ### Label Preview
 ![Label Preview](screenshots/label-preview.png)
-*Preview your label before printing - showing a "BOX 1" label with QR code, bold text, and subtle box icon watermark.*
-
-### Prefix Dropdown Options
-![Prefix Dropdown](screenshots/prefix-dropdown.png)
-*Choose from common prefixes: Box, Container, Shelf, Asset, or None for custom labels.*
+*Preview before printing - "BOX 1" label with QR code and box icon watermark.*
 
 ### Batch Mode
 ![Batch Mode](screenshots/batch-mode.png)
-*Print up to 10 different labels in one session with individual copy counts for each label.*
+*Print up to 10 different labels in one session with individual copy counts.*
 
-### Print Confirmation
-![Print Confirmation](screenshots/print-confirmation.png)
-*Confirmation dialog before printing to prevent accidental prints.*
-
-### About Tab
+### Template Gallery
 ![About Tab](screenshots/about-tab.png)
-*Application information including version, features, and continuous tape product references.*
+*Browse all 8 label templates and tape specifications.*
+
+---
 
 ## Hardware Requirements
 
-- **Printer**: Brother QL-700 (validated - other models not tested)
-- **Tape**: Continuous (endless) tape - DK-22210 (29mm) or similar
-- **Connection**: USB (USB ID: 04f9:2042)
-- **Tested OS**: Ubuntu 25.10
+| Component | Requirement |
+|-----------|-------------|
+| **Printer** | Brother QL-700 (validated) |
+| **Tape** | Continuous (endless) tape - DK-22210 (29mm) or similar |
+| **Connection** | USB (USB ID: 04f9:2042) |
+| **OS** | Ubuntu/Debian Linux (tested on Ubuntu 25.10) |
+
+### Supported Tape Widths
+
+| Width | Pixels (300 DPI) | Brother Model |
+|-------|------------------|---------------|
+| 29mm  | 306px | DK-22210 |
+| 38mm  | 413px | DK-22225 |
+| 50mm  | 554px | DK-22223 |
+| 62mm  | 696px | DK-11209 |
 
 ---
 
-## Template Format
-
-The vertical dimension is always the fixed dimension of the continuous tape length. For ease of reference, these are documented in the About section of the app. 
-
-For example for a 29 MM continuous tape, the label height is always 29mm and the width scales dynamically to wrap the content. 
-
-
-![alt text](images/template_format.png)
-
----
 ## Installation
 
 ### Option 1: System-Wide Installation (Recommended)
 
-Build and install as a Debian package:
-
 ```bash
 # Clone the repository
-git clone https://github.com/danielrosehill/QL700-Label-Printer-GUI.git
-cd QL700-Label-Printer-GUI
+git clone https://github.com/danielrosehill/brother-ql-label-printer.git
+cd brother-ql-label-printer
 
-# Build and install
+# Build and install as Debian package
 ./build-and-install.sh
 ```
 
-This will:
-- Build a Debian package
-- Install it system-wide
-- Add the application to your application menu
-- Create a `brother-label-printer-gui` command
+This creates a system-wide installation with:
+- Application in your desktop menu
+- `brother-label-printer-gui` command
+- Automatic dependency handling
 
 ### Option 2: Development Mode
 
-Run directly from the repository:
-
 ```bash
+# Clone and run directly
+git clone https://github.com/danielrosehill/brother-ql-label-printer.git
+cd brother-ql-label-printer
 ./run.sh
 ```
 
-Dependencies are automatically installed when you run the app.
-
-### Updating to a New Version
-
-```bash
-# Update version and rebuild
-./update-version.sh 1.1.0
-
-# Or just rebuild with current version
-./build-and-install.sh
-```
-
-The application uses the **Archivo Bold** font (included) for high-quality label printing.
-
 ### USB Permissions
 
-Add your user to the `lp` group or create udev rules:
+Add your user to the `lp` group:
 
 ```bash
 sudo usermod -a -G lp $USER
+# Log out and back in for changes to take effect
 ```
 
-Or create `/etc/udev/rules.d/99-brother-ql.rules`:
+Or create udev rules at `/etc/udev/rules.d/99-brother-ql.rules`:
+
 ```
 SUBSYSTEM=="usb", ATTR{idVendor}=="04f9", ATTR{idProduct}=="2042", MODE="0666"
 ```
 
-Then reload udev rules:
+Then reload:
 ```bash
 sudo udevadm control --reload-rules
 sudo udevadm trigger
 ```
 
+---
+
 ## Usage
 
-### Launch the Application
+### Launch
 
-If installed system-wide:
 ```bash
+# If installed system-wide
 brother-label-printer-gui
-```
 
-Or from the repository:
-```bash
+# Or from repository
 ./run.sh
 ```
 
-Or use your application menu and search for "Brother Label Printer".
+Or find "Brother Label Printer" in your application menu.
 
-### Single Label Mode
+### Quick Start: Print Your First Label
 
-1. Select a prefix (optional): Box, Container, Shelf, Asset, or None
-2. Enter the URL or text for the QR code
-3. Enter the label number (if prefix selected) or full label text
-4. Adjust tape width, font size, and copies as needed
-5. Click "Generate Preview" (or press Enter)
-6. Click "Print Label" (or press Ctrl+P)
+1. **Select prefix**: Choose "Box" from the dropdown
+2. **Enter URL**: Your inventory tracking URL (or any URL)
+3. **Enter number**: "1" (will create "Box 1" label)
+4. **Preview**: Press Enter or click "Generate Preview"
+5. **Print**: Press Ctrl+P or click "Print Label"
 
-**Pro tips:**
-- **Prefix feature**: Select "Box" and enter "18" to automatically create "Box 18" labels
-- Use the **+1 button** to auto-increment label numbers
-- Press **Ctrl+R** to quickly clear the form
-- Your prefix selection is saved automatically for next time
+### Workflow Tips
 
-### Text-Only Mode
+- **Auto-increment**: After printing "Box 1", click +1 to jump to "Box 2"
+- **Batch setup**: Use Batch Mode to create multiple different labels at once
+- **Range printing**: Use Batch Range for sequences like "Shelf 1" through "Shelf 20"
+- **Text-only labels**: Switch to Text Only tab for simple category labels
 
-Same as Single Label Mode but without QR codes - perfect for simple inventory labels.
+### Keyboard Shortcuts
 
-1. Select a prefix (optional): Box, Container, Shelf, Asset, or None
-2. Enter the label number (if prefix selected) or full label text
-3. Adjust tape width, font size, and copies as needed
-4. Click "Generate Preview" to see your label
-5. Click "Print Label" to print
+| Shortcut | Action |
+|----------|--------|
+| Enter | Generate preview |
+| Ctrl+P | Print label |
+| Ctrl+R | Clear/reset form |
+| Ctrl+Up | Increment label number |
+| Ctrl+, | Open settings |
 
-### Batch Mode
+### Settings
 
-1. Switch to the "Batch Mode" tab
-2. Set shared settings (tape width, font size)
-3. Click "Add Label" to add labels to the batch
-4. Fill in URL, label text, and copies for each label
-5. Click "Preview All Labels" to see all labels
-6. Click "Print Batch" to print everything
+Access via **Settings → Printer Settings** or **Ctrl+,**:
 
-**Batch features:**
-- Up to 10 different labels per batch
-- Individual copy count for each label (1-10)
-- Copy count defaults to the last value used
-- Preview shows all labels stacked vertically
+- **Printer**: Select from connected Brother QL printers
+- **Paper Size**: 29mm, 38mm, 50mm, or 62mm tape
+- **Font Size**: 40-250 points
+- **Font**: Browse to select any TrueType font
+
+---
 
 ## Label Layout
 
@@ -193,88 +203,76 @@ Same as Single Label Mode but without QR codes - perfect for simple inventory la
 │  ┌──────────┐                                  │
 │  │ ████████ │                                  │
 │  │ ██    ██ │     LARGE LABEL TEXT        📦   │  ← Tape height (29-62mm)
-│  │ ████████ │                              │   │
+│  │ ████████ │                                  │
 │  └──────────┘                                  │
 └────────────────────────────────────────────────┘
       ↑                  ↑                    ↑
-   QR Code    100pt Archivo Bold Text    Subtle box
-                                         watermark
+   QR Code    Archivo Bold Text (100pt)   Box icon
+   (85% height)                           watermark
 
    ←──────────── Variable length ────────────────→
 ```
 
-**Design features:**
-- QR code on left (70% of tape height)
-- Large, bold text in Archivo font (100pt default)
-- Small decorative box icon watermark in bottom right
-- Subtle light gray border for professional finish
-
-### Keyboard Shortcuts
-
-| Shortcut  | Action                      |
-|-----------|-----------------------------|
-| Enter     | Generate preview            |
-| Ctrl+P    | Print label                 |
-| Ctrl+R    | Clear/reset form            |
-| Ctrl+Up   | Increment label number      |
-
-## Tape Width Specifications
-
-| Tape Width | Pixel Height | Model      |
-|------------|--------------|------------|
-| 29mm       | 306px        | DK-22210   |
-| 38mm       | 413px        | DK-22225   |
-| 50mm       | 554px        | DK-22223   |
-| 62mm       | 696px        | DK-11209   |
-
-## Troubleshooting
-
-### Printer Not Found
-
-Check USB connection:
-```bash
-lsusb | grep Brother
-```
-
-Should show: `Bus XXX Device XXX: ID 04f9:2042 Brother Industries, Ltd`
-
-### Permissions Error
-
-Ensure you're in the `lp` group or have udev rules configured (see Installation).
-
-### GUI Won't Start
-
-Make sure PyQt6 is installed. The launcher script handles this automatically, but if you encounter issues, manually install:
-```bash
-uv pip install -r requirements.txt
-```
+---
 
 ## Project Structure
 
 ```
 brother-ql-label-printer/
 ├── app/
-│   ├── label_printer_gui.py      # GUI application (PyQt6)
-│   ├── print_label.py            # Core label generation logic
-│   ├── assets/
-│   │   └── box.png              # Box icon
-│   └── fonts/
-│       └── static/
-│           └── Archivo-Bold.ttf  # Label font
-├── debian/                      # Debian packaging files
-│   ├── control                  # Package metadata
-│   ├── rules                    # Build rules
-│   ├── changelog                # Version history
-│   └── compat                   # Debhelper compatibility
-├── brother-label-printer-gui    # Wrapper script
-├── brother-label-printer.desktop # Desktop entry file
-├── build-and-install.sh         # Build and install script
-├── update-version.sh            # Version bump script
-├── run.sh                       # Development launcher
-├── requirements.txt             # Python dependencies
-├── CLAUDE.md                    # Technical documentation
-└── README.md                    # This file
+│   ├── label_printer_gui.py    # Main GUI application
+│   ├── print_label.py          # Label generation & printing
+│   ├── assets/box.png          # Watermark icon
+│   └── fonts/                  # Archivo Bold font
+├── debian/                     # Debian packaging
+├── screenshots/                # Documentation images
+├── template-previews/          # Template examples
+├── build-and-install.sh        # Build script
+├── run.sh                      # Development launcher
+└── requirements.txt            # Python dependencies
 ```
+
+---
+
+## Troubleshooting
+
+### Printer Not Found
+
+```bash
+# Check USB connection
+lsusb | grep Brother
+# Should show: ID 04f9:2042 Brother Industries, Ltd
+```
+
+If not detected:
+1. Check USB cable connection
+2. Ensure printer is powered on
+3. Try a different USB port
+
+### Permission Denied
+
+Ensure USB permissions are configured (see Installation section).
+
+### Multiple Printers
+
+If you have multiple Brother QL printers:
+1. Open Settings (Ctrl+,)
+2. Click "Refresh" to scan for printers
+3. Select the desired printer from the dropdown
+
+---
+
+## Dependencies
+
+- **Python 3.10+**
+- **PyQt6** - GUI framework
+- **brother_ql** - Printer communication
+- **Pillow** - Image generation
+- **qrcode** - QR code generation
+
+All dependencies are automatically installed during setup.
+
+---
 
 ## License
 
@@ -282,4 +280,11 @@ This project is open source. See individual files for licensing details.
 
 ## Contributing
 
-Contributions are welcome! Please test thoroughly with actual hardware before submitting changes.
+Contributions welcome! Please test with actual hardware before submitting changes.
+
+---
+
+## Acknowledgments
+
+- Uses the [Archivo](https://fonts.google.com/specimen/Archivo) font family
+- Built on the [brother_ql](https://github.com/pklaus/brother_ql) library

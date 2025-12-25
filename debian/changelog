@@ -1,3 +1,14 @@
+brother-label-printer (1.5.0) unstable; urgency=medium
+
+  * Version 1.5.0: Printer Selection
+  * Added printer selection to Settings - choose from multiple connected Brother QL printers
+  * Printer discovery scans USB backends (pyusb, linux_kernel) for connected devices
+  * Selected printer persists across application sessions
+  * Updated README with inventory management focus and comprehensive documentation
+  * Fixed settings dialog to properly return values from form controls
+
+ -- Daniel Rosehill <public@danielrosehill.com>  Wed, 25 Dec 2024 12:30:00 +0200
+
 brother-label-printer (1.4.0) unstable; urgency=medium
 
   * Version 1.4.0
